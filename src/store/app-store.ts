@@ -34,14 +34,14 @@ type AppState = {
   updateFormStatus: (id: string, status: TrainingForm["status"]) => void;
   addForm: (form: TrainingForm) => void;
   submitTraineeFeedback: (payload: {
-    formId?: string;
+    formId: string;
     traineeName: string;
     employeeId: string;
     departmentRole: string;
     feedbackDate: string;
     averageScore: number;
     comment: string;
-  }) => void;
+  }) => boolean;
 };
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -61,14 +61,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSelectedReviewFormId: (id) => set({ selectedReviewFormId: id }),
   updateFormStatus: (id, status) => set({ forms: get().forms.map((f) => (f.id === id ? { ...f, status } : f)) }),
   addForm: (form) => set({ forms: [form, ...get().forms] }),
-  submitTraineeFeedback: (payload) =>
+  submitTraineeFeedback: (payload) => {
+    const target = get().forms.find((form) => form.id === payload.formId);
+    if (!target) return false;
+
     set({
       forms: get().forms.map((form) => {
-        const fallbackTarget =
-          get().forms.find((f) => f.status === "Waiting for Feedback") ??
-          get().forms.find((f) => f.status === "Submitted");
-        const isTarget = payload.formId ? form.id === payload.formId : form.id === fallbackTarget?.id;
-        if (!isTarget) return form;
+        if (form.id !== payload.formId) return form;
 
         const nextCount = form.feedbackResponses + 1;
         const nextAverage =
@@ -92,7 +91,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           ]
         };
       })
-    })
+    });
+    return true;
+  }
 }));
 
 export function dashboardRouteByRole(role: Role) {

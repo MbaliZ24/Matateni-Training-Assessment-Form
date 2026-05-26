@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { useAppStore } from "../../store/app-store";
+import { useSearchParams } from "react-router-dom";
 
 const feedbackStatements = [
   "The training objectives were clear.",
@@ -16,12 +17,11 @@ const feedbackStatements = [
 const ratingScale = [1, 2, 3, 4, 5] as const;
 
 export function TraineeFeedbackPage() {
+  const [searchParams] = useSearchParams();
+  const formId = searchParams.get("formId") ?? "";
   const forms = useAppStore((s) => s.forms);
   const submitTraineeFeedback = useAppStore((s) => s.submitTraineeFeedback);
-  const targetForm =
-    forms.find((f) => f.status === "Waiting for Feedback") ??
-    forms.find((f) => f.status === "Submitted") ??
-    forms[0];
+  const targetForm = forms.find((f) => f.id === formId);
   const [traineeName, setTraineeName] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [departmentRole, setDepartmentRole] = useState("");
@@ -46,6 +46,7 @@ export function TraineeFeedbackPage() {
         <CardContent className="space-y-5">
           <div className="rounded-xl border border-brand-line bg-slate-50 p-4">
             <p className="mb-3 text-sm font-semibold text-brand-ink">Trainee Information</p>
+            <p className="mb-3 text-xs text-slate-500">Training Form ID: {formId || "Missing formId in link"}</p>
             <div className="grid gap-3 md:grid-cols-2">
               <input
                 type="text"
@@ -134,6 +135,7 @@ export function TraineeFeedbackPage() {
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
+              disabled={!targetForm}
               onClick={() => {
                 const selected = ratings.filter((score): score is number => score !== null);
                 const averageValue =
@@ -143,8 +145,8 @@ export function TraineeFeedbackPage() {
                         (selected.reduce((sum, score) => sum + score, 0) / selected.length).toFixed(1)
                       );
 
-                submitTraineeFeedback({
-                  formId: targetForm?.id,
+                const ok = submitTraineeFeedback({
+                  formId,
                   traineeName,
                   employeeId,
                   departmentRole,
@@ -152,12 +154,13 @@ export function TraineeFeedbackPage() {
                   averageScore: averageValue,
                   comment: comments
                 });
-                setSubmitted(true);
+                setSubmitted(ok);
               }}
               className="min-w-40"
             >
               Submit Feedback
             </Button>
+            {!targetForm ? <p className="text-sm text-red-700">Invalid or missing training link. Ask your trainer for the correct feedback link.</p> : null}
             {submitted ? <p className="text-sm text-emerald-700">Thank you. Your feedback was submitted.</p> : null}
           </div>
         </CardContent>

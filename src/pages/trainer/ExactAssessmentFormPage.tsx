@@ -481,8 +481,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
     }
 
     if (userRole === "trainer") {
+      const newFormId = `F-${Date.now()}`;
       addForm({
-        id: `F-${Date.now()}`,
+        id: newFormId,
         title: trainingTitle || "Training Assessment",
         trainerId: currentUser?.id ?? "u1",
         department: trainerDepartment || currentUser?.department || "Operations",
@@ -519,7 +520,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
         open: true,
         kind: "success",
         title: "Submitted To Supervisor",
-        message: "Trainer response has been submitted for supervisor/line manager review."
+        message: `Trainer response submitted. Share this trainee link: /trainee-feedback?formId=${newFormId}`
       });
       return;
     }
