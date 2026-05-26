@@ -1,0 +1,18 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Segoe UI", "Aptos", "Calibri", system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  color: #202336;
+  background: radial-gradient(circle at top right, #eef1f7 0%, #f6f7f9 40%, #ffffff 100%);
+}
+
+input,
+textarea {
+  color: #202336;
+}
