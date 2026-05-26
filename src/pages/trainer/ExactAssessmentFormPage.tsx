@@ -367,6 +367,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
   const [numberOfTrainees, setNumberOfTrainees] = useState(submittedData?.numberOfTrainees ?? "");
   const [objectives, setObjectives] = useState<string[]>(submittedData?.objectives?.length ? submittedData.objectives : [""]);
   const [observedImprovement, setObservedImprovement] = useState<YesNo>("");
+  const [trainerFutureSessionComment, setTrainerFutureSessionComment] = useState("");
+  const [supervisorFutureSessionComment, setSupervisorFutureSessionComment] = useState("");
   const [signatures, setSignatures] = useState({
     trainer: false,
     supervisor: false
@@ -1475,7 +1477,32 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
           <Card section="F" title="Overall Trainer Reflection & Improvement" owner="Trainer" disabled={isSupervisorReviewMode}>
             <div className="space-y-4">
               <TextArea label="What worked well in this training?" rows={3} />
-              <TextArea label="What would you change for future sessions?" rows={3} />
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-slate-700">What would you change for future sessions?</p>
+                <label className="block text-sm font-medium text-slate-700">
+                  Trainer comment
+                  <textarea
+                    rows={3}
+                    value={trainerFutureSessionComment}
+                    onChange={(event) => setTrainerFutureSessionComment(event.target.value)}
+                    placeholder="Trainer input for future sessions"
+                    className="mt-2 w-full rounded-lg border border-brand-line bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Supervisor comment
+                  <textarea
+                    rows={3}
+                    value={supervisorFutureSessionComment}
+                    onChange={(event) => setSupervisorFutureSessionComment(event.target.value)}
+                    readOnly={userRole === "trainer"}
+                    placeholder={userRole === "trainer" ? "Supervisor will complete this field" : "Supervisor input for future sessions"}
+                    className={`mt-2 w-full rounded-lg border border-brand-line px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100 ${
+                      userRole === "trainer" ? "bg-slate-100 text-slate-500" : "bg-white"
+                    }`}
+                  />
+                </label>
+              </div>
               <div>
                 <p className="mb-2 text-sm font-medium text-slate-700">Training effectiveness rating (overall)</p>
                 <div className="flex flex-wrap gap-4">
@@ -1625,6 +1652,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
     </main>
   );
 }
+
 
 
 
