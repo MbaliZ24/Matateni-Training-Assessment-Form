@@ -12,6 +12,7 @@ const navByRole: Record<Role, { to: string; label: string; icon: React.Component
   supervisor: [
     { to: "/supervisor", label: "Dashboard", icon: ShieldCheck },
     { to: "/supervisor/review", label: "Review & Sign-Off", icon: FileCheck2 },
+    { to: "/supervisor/archive", label: "Signed Forms", icon: ClipboardList },
     { to: "/supervisor/reports", label: "Reports", icon: BarChart3 }
   ],
   admin: [

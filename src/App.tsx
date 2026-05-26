@@ -7,6 +7,7 @@ import { TrainerFeedbackPage } from "./pages/trainer/TrainerFeedbackPage";
 import { TraineeFeedbackPage } from "./pages/trainee/TraineeFeedbackPage";
 import { SupervisorDashboardPage } from "./pages/supervisor/SupervisorDashboardPage";
 import { SupervisorReportsPage } from "./pages/supervisor/SupervisorReportsPage";
+import { SupervisorArchivePage } from "./pages/supervisor/SupervisorArchivePage";
 import { ReviewSignOffPage } from "./pages/supervisor/ReviewSignOffPage";
 import { AdminDashboardPage } from "./pages/admin/AdminDashboardPage";
 import { ReportsAnalyticsPage } from "./pages/reports/ReportsAnalyticsPage";
@@ -48,6 +49,7 @@ export default function App() {
       <Route element={<Protected role="supervisor" title="Supervisor Workspace" />}>
         <Route path="/supervisor" element={<SupervisorDashboardPage />} />
         <Route path="/supervisor/review" element={<ReviewSignOffPage />} />
+        <Route path="/supervisor/archive" element={<SupervisorArchivePage />} />
         <Route path="/supervisor/reports" element={<SupervisorReportsPage />} />
       </Route>
 
