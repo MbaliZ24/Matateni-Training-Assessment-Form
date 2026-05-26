@@ -44,6 +44,14 @@ export type TrainingForm = {
     averageScoreDisplay: string;
     traineeRoster: { name: string; departmentOrRole: string; attendance: "Yes" | "No" | "" }[];
   };
+  supervisorOnlyFeedback?: {
+    traineeName: string;
+    employeeId: string;
+    departmentRole: string;
+    feedbackDate: string;
+    averageScore: number;
+    comment: string;
+  }[];
 };
 
 export type NotificationItem = {

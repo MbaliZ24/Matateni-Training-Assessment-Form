@@ -35,11 +35,11 @@ export default function App() {
     <Routes>
       <Route path="/" element={<HomeRedirect />} />
       <Route path="/login" element={user ? <Navigate to={dashboardRouteByRole(user.role)} replace /> : <LoginPage />} />
+      <Route path="/trainee-feedback" element={<TraineeFeedbackPage />} />
 
       <Route element={<Protected role="trainer" title="Trainer Workspace" />}>
         <Route path="/trainer" element={<Navigate to="/trainer/create" replace />} />
         <Route path="/trainer/create" element={<ExactAssessmentFormPage />} />
-        <Route path="/trainee-feedback" element={<TraineeFeedbackPage />} />
       </Route>
 
       <Route element={<Protected role="supervisor" title="Supervisor Workspace" />}>

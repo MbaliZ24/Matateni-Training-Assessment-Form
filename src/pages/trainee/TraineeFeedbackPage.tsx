@@ -1,29 +1,167 @@
-﻿// Mobile-friendly feedback capture screen trainees can complete quickly.
+﻿// Public trainee feedback form (no login) with the original matrix-style rating experience.
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
-import { useState } from "react";
+import { useAppStore } from "../../store/app-store";
+
+const feedbackStatements = [
+  "The training objectives were clear.",
+  "The content was relevant to my role.",
+  "The trainer was knowledgeable and organised.",
+  "The pace and duration of training were appropriate.",
+  "Practical exercises / workplace examples were useful.",
+  "The training will help me perform my job more effectively."
+];
+
+const ratingScale = [1, 2, 3, 4, 5] as const;
 
 export function TraineeFeedbackPage() {
-  const [ratings, setRatings] = useState(Array(5).fill(0));
+  const forms = useAppStore((s) => s.forms);
+  const submitTraineeFeedback = useAppStore((s) => s.submitTraineeFeedback);
+  const targetForm =
+    forms.find((f) => f.status === "Waiting for Feedback") ??
+    forms.find((f) => f.status === "Submitted") ??
+    forms[0];
+  const [traineeName, setTraineeName] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
+  const [departmentRole, setDepartmentRole] = useState("");
+  const [feedbackDate, setFeedbackDate] = useState("");
+  const [ratings, setRatings] = useState<(number | null)[]>(Array(feedbackStatements.length).fill(null));
   const [comments, setComments] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+
+  const averageScore = useMemo(() => {
+    const selected = ratings.filter((score): score is number => score !== null);
+    if (selected.length === 0) return "-";
+    const avg = selected.reduce((sum, score) => sum + score, 0) / selected.length;
+    return `${avg.toFixed(1)} / 5`;
+  }, [ratings]);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
+    <div className="mx-auto w-full max-w-6xl space-y-4 px-3 py-4 md:px-0 md:py-6">
       <Card>
-        <CardHeader><CardTitle>Trainee Feedback</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          {["Objectives clarity", "Content relevance", "Trainer effectiveness", "Pace and duration", "Practical value"].map((item, idx) => (
-            <div key={item} className="rounded-xl border border-slate-200 p-4">
-              <p className="mb-2 text-sm font-medium text-slate-800">{item}</p>
-              <div className="flex gap-2">{[1,2,3,4,5].map((n) => <button key={n} onClick={() => setRatings((prev) => prev.map((v, i) => i===idx ? n : v))} className={`size-10 rounded-full border text-sm font-semibold ${ratings[idx]===n ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700"}`}>{n}</button>)}</div>
+        <CardHeader>
+          <CardTitle>Trainee Self-Feedback</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="rounded-xl border border-brand-line bg-slate-50 p-4">
+            <p className="mb-3 text-sm font-semibold text-brand-ink">Trainee Information</p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <input
+                type="text"
+                placeholder="Trainee full name"
+                value={traineeName}
+                onChange={(e) => setTraineeName(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
+              />
+              <input
+                type="text"
+                placeholder="Employee number / ID"
+                value={employeeId}
+                onChange={(e) => setEmployeeId(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
+              />
+              <input
+                type="text"
+                placeholder="Department / role"
+                value={departmentRole}
+                onChange={(e) => setDepartmentRole(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
+              />
+              <input
+                type="date"
+                value={feedbackDate}
+                onChange={(e) => setFeedbackDate(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
+              />
             </div>
-          ))}
-          <textarea className="h-28 w-full rounded-lg border border-slate-300 p-3" placeholder="Add comments" value={comments} onChange={(e) => setComments(e.target.value)} />
-          <Button className="w-full">Submit Feedback</Button>
-          <p className="text-center text-xs text-slate-500">QR-friendly lightweight screen for mobile completion.</p>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-brand-line">
+            <table className="min-w-[760px] w-full border-collapse text-sm">
+              <thead className="bg-slate-100 text-slate-700">
+                <tr>
+                  <th className="border border-brand-line px-4 py-3 text-left font-semibold">Statement</th>
+                  {ratingScale.map((rating) => (
+                    <th key={rating} className="border border-brand-line px-4 py-3 text-center font-semibold">
+                      {rating}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {feedbackStatements.map((statement, rowIndex) => (
+                  <tr key={statement} className="odd:bg-white even:bg-slate-50">
+                    <td className="border border-brand-line px-4 py-3 text-slate-800">{statement}</td>
+                    {ratingScale.map((rating) => (
+                      <td key={rating} className="border border-brand-line px-4 py-3 text-center">
+                        <input
+                          type="radio"
+                          name={`feedback-${rowIndex}`}
+                          aria-label={`${statement} rating ${rating}`}
+                          checked={ratings[rowIndex] === rating}
+                          onChange={() =>
+                            setRatings((prev) => {
+                              const next = [...prev];
+                              next[rowIndex] = rating;
+                              return next;
+                            })
+                          }
+                          className="accent-brand-ruby"
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="max-w-md rounded-xl border border-brand-line bg-slate-50 p-4">
+            <p className="mb-1 text-sm font-semibold text-brand-ink">Average Score (auto-calculated)</p>
+            <p className="text-lg font-bold text-slate-800">{averageScore}</p>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-700">Additional comments</label>
+            <textarea
+              className="h-28 w-full rounded-lg border border-slate-300 p-3"
+              placeholder="Share any feedback that can improve future sessions"
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={() => {
+                const selected = ratings.filter((score): score is number => score !== null);
+                const averageValue =
+                  selected.length === 0
+                    ? 0
+                    : Number(
+                        (selected.reduce((sum, score) => sum + score, 0) / selected.length).toFixed(1)
+                      );
+
+                submitTraineeFeedback({
+                  formId: targetForm?.id,
+                  traineeName,
+                  employeeId,
+                  departmentRole,
+                  feedbackDate,
+                  averageScore: averageValue,
+                  comment: comments
+                });
+                setSubmitted(true);
+              }}
+              className="min-w-40"
+            >
+              Submit Feedback
+            </Button>
+            {submitted ? <p className="text-sm text-emerald-700">Thank you. Your feedback was submitted.</p> : null}
+          </div>
         </CardContent>
       </Card>
     </div>
   );
 }
-

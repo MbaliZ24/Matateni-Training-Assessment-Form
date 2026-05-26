@@ -498,7 +498,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
             )
           ).toFixed(1)
         ),
-        status: "Submitted",
+        status: "Waiting for Feedback",
         recommendation: "Pending supervisor review",
         createdAt: new Date().toISOString().slice(0, 10),
         submittedData: {

@@ -33,6 +33,15 @@ type AppState = {
   setSelectedReviewFormId: (id: string | null) => void;
   updateFormStatus: (id: string, status: TrainingForm["status"]) => void;
   addForm: (form: TrainingForm) => void;
+  submitTraineeFeedback: (payload: {
+    formId?: string;
+    traineeName: string;
+    employeeId: string;
+    departmentRole: string;
+    feedbackDate: string;
+    averageScore: number;
+    comment: string;
+  }) => void;
 };
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -51,7 +60,39 @@ export const useAppStore = create<AppState>((set, get) => ({
   logout: () => set({ currentUser: null }),
   setSelectedReviewFormId: (id) => set({ selectedReviewFormId: id }),
   updateFormStatus: (id, status) => set({ forms: get().forms.map((f) => (f.id === id ? { ...f, status } : f)) }),
-  addForm: (form) => set({ forms: [form, ...get().forms] })
+  addForm: (form) => set({ forms: [form, ...get().forms] }),
+  submitTraineeFeedback: (payload) =>
+    set({
+      forms: get().forms.map((form) => {
+        const fallbackTarget =
+          get().forms.find((f) => f.status === "Waiting for Feedback") ??
+          get().forms.find((f) => f.status === "Submitted");
+        const isTarget = payload.formId ? form.id === payload.formId : form.id === fallbackTarget?.id;
+        if (!isTarget) return form;
+
+        const nextCount = form.feedbackResponses + 1;
+        const nextAverage =
+          (form.averageScore * form.feedbackResponses + payload.averageScore) / Math.max(1, nextCount);
+
+        return {
+          ...form,
+          feedbackResponses: nextCount,
+          averageScore: Number(nextAverage.toFixed(1)),
+          status: "Submitted",
+          supervisorOnlyFeedback: [
+            ...(form.supervisorOnlyFeedback ?? []),
+            {
+              traineeName: payload.traineeName,
+              employeeId: payload.employeeId,
+              departmentRole: payload.departmentRole,
+              feedbackDate: payload.feedbackDate,
+              averageScore: payload.averageScore,
+              comment: payload.comment
+            }
+          ]
+        };
+      })
+    })
 }));
 
 export function dashboardRouteByRole(role: Role) {
