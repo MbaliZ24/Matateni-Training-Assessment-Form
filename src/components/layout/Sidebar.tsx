@@ -1,14 +1,18 @@
 ﻿// Left navigation tuned per role so each user only sees relevant actions.
-import { ClipboardList, ShieldCheck, Users, BarChart3, FileCheck2 } from "lucide-react";
+import { ClipboardList, ShieldCheck, Users, BarChart3, FileCheck2, MessageSquare } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import type { Role } from "../../types";
 
 const navByRole: Record<Role, { to: string; label: string; icon: React.ComponentType<{ className?: string }> }[]> = {
-  trainer: [{ to: "/trainer/create", label: "Training Assessment Form", icon: ClipboardList }],
+  trainer: [
+    { to: "/trainer/create", label: "Assessments", icon: ClipboardList },
+    { to: "/trainer/feedback", label: "Feedback", icon: MessageSquare }
+  ],
   supervisor: [
     { to: "/supervisor", label: "Dashboard", icon: ShieldCheck },
-    { to: "/supervisor/review", label: "Review & Sign-Off", icon: FileCheck2 }
+    { to: "/supervisor/review", label: "Review & Sign-Off", icon: FileCheck2 },
+    { to: "/supervisor/reports", label: "Reports", icon: BarChart3 }
   ],
   admin: [
     { to: "/admin", label: "Dashboard", icon: Users },

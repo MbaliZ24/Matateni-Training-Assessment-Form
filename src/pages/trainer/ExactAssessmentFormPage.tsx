@@ -325,6 +325,7 @@ type SectionKey = (typeof sectionKeys)[number];
 type ExactAssessmentFormPageProps = {
   readOnly?: boolean;
   submittedData?: TrainingForm["submittedData"];
+  reviewFormId?: string;
 };
 
 type TrainerDraft = {
@@ -345,16 +346,15 @@ type TrainerDraft = {
   commentsVersion: number;
 };
 
-export function ExactAssessmentFormPage({ readOnly = false, submittedData }: ExactAssessmentFormPageProps) {
+export function ExactAssessmentFormPage({ readOnly = false, submittedData, reviewFormId }: ExactAssessmentFormPageProps) {
   const addForm = useAppStore((s) => s.addForm);
+  const updateFormStatus = useAppStore((s) => s.updateFormStatus);
   const forms = useAppStore((s) => s.forms);
   const currentUser = useAppStore((s) => s.currentUser);
   const sections = sectionKeys;
   type UserRole = "trainer" | "trainee" | "supervisor";
-  type WorkflowStatus = "draft" | "submitted_to_supervisor" | "approved_by_supervisor";
   const [activeSection, setActiveSection] = useState<SectionKey>("A");
   const [userRole] = useState<UserRole>(readOnly ? "supervisor" : "trainer");
-  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus>("draft");
   const formRef = useRef<HTMLDivElement | null>(null);
   const [distributedFormId, setDistributedFormId] = useState<string | null>(null);
 
@@ -431,11 +431,12 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
 
   const effectiveDistributedFormId = useMemo(() => {
     if (distributedFormId) return distributedFormId;
+    if (reviewFormId) return reviewFormId;
     const fallbackForm = forms
       .filter((form) => form.trainerId === (currentUser?.id ?? ""))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
     return fallbackForm?.id ?? null;
-  }, [distributedFormId, forms, currentUser?.id]);
+  }, [distributedFormId, reviewFormId, forms, currentUser?.id]);
 
   const traineeFeedbackLink = useMemo(() => {
     if (!effectiveDistributedFormId) return "";
@@ -710,9 +711,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
   };
 
   const handleSubmit = () => {
-    if (readOnly) return;
+    if (readOnly && userRole !== "supervisor") return;
 
-    if (!hasAnyFormInput()) {
+    if (userRole !== "supervisor" && !hasAnyFormInput()) {
       setSubmitModal({
         open: true,
         kind: "error",
@@ -766,7 +767,6 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
         supervisorOnlyFeedback: existingForm?.supervisorOnlyFeedback
       });
       setDistributedFormId(newFormId);
-      setWorkflowStatus("submitted_to_supervisor");
       setSubmitModal({
         open: true,
         kind: "success",
@@ -780,16 +780,16 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
     }
 
     if (userRole === "supervisor") {
-      if (workflowStatus !== "submitted_to_supervisor") {
+      if (!linkedForm) {
         setSubmitModal({
           open: true,
           kind: "error",
-          title: "No Trainer Submission Yet",
-          message: "Please wait for the trainer to submit before supervisor approval."
+          title: "No Form Linked",
+          message: "Unable to locate the trainer form for supervisor sign-off."
         });
         return;
       }
-      setWorkflowStatus("approved_by_supervisor");
+      updateFormStatus(linkedForm.id, "Approved");
       setSubmitModal({
         open: true,
         kind: "success",
@@ -1410,15 +1410,6 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
               To be completed by trainer with input from supervisor/line manager, 2-4 weeks post-training.
             </p>
             <div className="space-y-5">
-              <div className="rounded-xl border border-brand-line bg-slate-50 p-4">
-                <p className="mb-3 text-sm font-semibold text-brand-ink">Follow-up Participants</p>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <TextInput label="Supervisor / Line Manager Name" />
-                  <TextInput label="Supervisor Role / Department" />
-                  <TextInput label="Follow-up Date" type="date" />
-                </div>
-              </div>
-
               <div>
                 <p className="mb-2 text-sm font-medium text-slate-700">To what extent have trainees applied the skills in the workplace?</p>
                 <div className="flex flex-wrap gap-4">
@@ -1474,7 +1465,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
           ) : null}
 
           {activeSection === "F" && visibleSections.includes("F") ? (
-          <Card section="F" title="Overall Trainer Reflection & Improvement" owner="Trainer" disabled={isSupervisorReviewMode}>
+          <Card section="F" title="Overall Trainer Reflection & Improvement" owner="Trainer" disabled={false}>
             <div className="space-y-4">
               <TextArea label="What worked well in this training?" rows={3} />
               <div className="space-y-3">
@@ -1485,8 +1476,11 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
                     rows={3}
                     value={trainerFutureSessionComment}
                     onChange={(event) => setTrainerFutureSessionComment(event.target.value)}
+                    readOnly={userRole === "supervisor"}
                     placeholder="Trainer input for future sessions"
-                    className="mt-2 w-full rounded-lg border border-brand-line bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100"
+                    className={`mt-2 w-full rounded-lg border border-brand-line px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100 ${
+                      userRole === "supervisor" ? "bg-slate-100 text-slate-500" : "bg-white"
+                    }`}
                   />
                 </label>
                 <label className="block text-sm font-medium text-slate-700">

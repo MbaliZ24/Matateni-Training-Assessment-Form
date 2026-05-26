@@ -3,8 +3,10 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { ExactAssessmentFormPage } from "./pages/trainer/ExactAssessmentFormPage";
+import { TrainerFeedbackPage } from "./pages/trainer/TrainerFeedbackPage";
 import { TraineeFeedbackPage } from "./pages/trainee/TraineeFeedbackPage";
 import { SupervisorDashboardPage } from "./pages/supervisor/SupervisorDashboardPage";
+import { SupervisorReportsPage } from "./pages/supervisor/SupervisorReportsPage";
 import { ReviewSignOffPage } from "./pages/supervisor/ReviewSignOffPage";
 import { AdminDashboardPage } from "./pages/admin/AdminDashboardPage";
 import { ReportsAnalyticsPage } from "./pages/reports/ReportsAnalyticsPage";
@@ -40,11 +42,13 @@ export default function App() {
       <Route element={<Protected role="trainer" title="Trainer Workspace" />}>
         <Route path="/trainer" element={<Navigate to="/trainer/create" replace />} />
         <Route path="/trainer/create" element={<ExactAssessmentFormPage />} />
+        <Route path="/trainer/feedback" element={<TrainerFeedbackPage />} />
       </Route>
 
       <Route element={<Protected role="supervisor" title="Supervisor Workspace" />}>
         <Route path="/supervisor" element={<SupervisorDashboardPage />} />
         <Route path="/supervisor/review" element={<ReviewSignOffPage />} />
+        <Route path="/supervisor/reports" element={<SupervisorReportsPage />} />
       </Route>
 
       <Route element={<Protected role="admin" title="Admin Workspace" />}>

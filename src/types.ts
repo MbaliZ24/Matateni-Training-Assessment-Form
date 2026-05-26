@@ -53,6 +53,29 @@ export type TrainingForm = {
     comment: string;
     statementRatings?: (number | null)[];
   }[];
+  supervisorReview?: {
+    decision: "Approve" | "Needs Changes" | "Reject";
+    comments: string;
+    actionItems: string[];
+    dueDate?: string;
+    sectionFeedback: { section: string; verdict: "OK" | "Revise"; comment: string }[];
+    stage: "draft" | "submitted" | "final_approved";
+    submittedAt?: string;
+    submittedBy?: string;
+    updatedAt: string;
+  };
+  supervisorReviewHistory?: {
+    decision: "Approve" | "Needs Changes" | "Reject";
+    comments: string;
+    actionItems: string[];
+    dueDate?: string;
+    sectionFeedback: { section: string; verdict: "OK" | "Revise"; comment: string }[];
+    stage: "draft" | "submitted" | "final_approved";
+    submittedAt?: string;
+    submittedBy?: string;
+    updatedAt: string;
+  }[];
+  trainerFeedbackReadAt?: string;
 };
 
 export type NotificationItem = {

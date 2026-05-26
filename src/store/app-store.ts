@@ -11,7 +11,34 @@ const users: User[] = [
 
 const forms: TrainingForm[] = [
   { id: "F-1021", title: "SAP Inventory Basics", trainerId: "u1", department: "Operations", date: "2026-05-20", trainees: 18, feedbackResponses: 14, averageScore: 4.2, status: "Waiting for Feedback", recommendation: "Proceed", createdAt: "2026-05-20" },
-  { id: "F-1022", title: "Safety Incident Reporting", trainerId: "u1", department: "Safety", date: "2026-05-18", trainees: 12, feedbackResponses: 12, averageScore: 4.6, status: "Submitted", recommendation: "Proceed", createdAt: "2026-05-18" },
+  {
+    id: "F-1022",
+    title: "Safety Incident Reporting",
+    trainerId: "u1",
+    department: "Safety",
+    date: "2026-05-18",
+    trainees: 12,
+    feedbackResponses: 12,
+    averageScore: 4.6,
+    status: "Needs Correction",
+    recommendation: "Proceed",
+    createdAt: "2026-05-18",
+    supervisorReview: {
+      decision: "Needs Changes",
+      comments: "Good coverage, but add more practical incident examples in Section C and improve clarity in final reflection.",
+      actionItems: ["Add 2 practical examples to Section C", "Update reflection to include measurable outcomes"],
+      dueDate: "2026-05-30",
+      sectionFeedback: [
+        { section: "C: Feedback", verdict: "Revise", comment: "Include practical examples for trainees." },
+        { section: "D/E: Skills & Follow-up", verdict: "OK", comment: "Looks fine." },
+        { section: "F: Reflection", verdict: "Revise", comment: "Be more specific with improvements." }
+      ],
+      stage: "submitted",
+      submittedAt: "2026-05-25T10:00:00.000Z",
+      submittedBy: "Sipho Mokoena",
+      updatedAt: "2026-05-25T10:00:00.000Z"
+    }
+  },
   { id: "F-1023", title: "Shift Handover Protocol", trainerId: "u1", department: "Operations", date: "2026-05-14", trainees: 10, feedbackResponses: 9, averageScore: 3.8, status: "Needs Correction", recommendation: "Adjust examples", createdAt: "2026-05-14" },
   { id: "F-1024", title: "Warehouse Compliance", trainerId: "u1", department: "Compliance", date: "2026-05-12", trainees: 22, feedbackResponses: 22, averageScore: 4.5, status: "Approved", recommendation: "Scale", createdAt: "2026-05-12" }
 ];
@@ -44,6 +71,25 @@ type AppState = {
     comment: string;
     statementRatings: (number | null)[];
   }) => boolean;
+  saveSupervisorReviewDraft: (payload: {
+    formId: string;
+    decision: "Approve" | "Needs Changes" | "Reject";
+    comments: string;
+    actionItems: string[];
+    dueDate?: string;
+    sectionFeedback: { section: string; verdict: "OK" | "Revise"; comment: string }[];
+    reviewerName: string;
+  }) => boolean;
+  submitSupervisorReview: (payload: {
+    formId: string;
+    decision: "Approve" | "Needs Changes" | "Reject";
+    comments: string;
+    actionItems: string[];
+    dueDate?: string;
+    sectionFeedback: { section: string; verdict: "OK" | "Revise"; comment: string }[];
+    reviewerName: string;
+  }) => boolean;
+  markTrainerFeedbackRead: (formId: string) => void;
 };
 
 export const useAppStore = create<AppState>()(
@@ -101,6 +147,79 @@ export const useAppStore = create<AppState>()(
           })
         });
         return true;
+      },
+      saveSupervisorReviewDraft: (payload) => {
+        const now = new Date().toISOString();
+        const target = get().forms.find((form) => form.id === payload.formId);
+        if (!target) return false;
+        const review = {
+          decision: payload.decision,
+          comments: payload.comments,
+          actionItems: payload.actionItems,
+          dueDate: payload.dueDate,
+          sectionFeedback: payload.sectionFeedback,
+          stage: "draft" as const,
+          submittedBy: payload.reviewerName,
+          updatedAt: now
+        };
+        set({
+          forms: get().forms.map((form) =>
+            form.id === payload.formId
+              ? {
+                  ...form,
+                  status: "Under Review",
+                  supervisorReview: review,
+                  supervisorReviewHistory: [...(form.supervisorReviewHistory ?? []), review]
+                }
+              : form
+          )
+        });
+        return true;
+      },
+      submitSupervisorReview: (payload) => {
+        const now = new Date().toISOString();
+        const target = get().forms.find((form) => form.id === payload.formId);
+        if (!target) return false;
+        const review = {
+          decision: payload.decision,
+          comments: payload.comments,
+          actionItems: payload.actionItems,
+          dueDate: payload.dueDate,
+          sectionFeedback: payload.sectionFeedback,
+          stage: "submitted" as const,
+          submittedAt: now,
+          submittedBy: payload.reviewerName,
+          updatedAt: now
+        };
+        const nextStatus =
+          payload.decision === "Approve"
+            ? "Approved"
+            : payload.decision === "Needs Changes"
+              ? "Needs Correction"
+              : "Rejected";
+        set({
+          forms: get().forms.map((form) =>
+            form.id === payload.formId
+              ? {
+                  ...form,
+                  status: nextStatus,
+                  supervisorReview: review,
+                  trainerFeedbackReadAt: undefined,
+                  supervisorReviewHistory: [...(form.supervisorReviewHistory ?? []), review]
+                }
+              : form
+          )
+        });
+        return true;
+      },
+      markTrainerFeedbackRead: (formId) => {
+        set({
+          forms: get().forms.map((form) =>
+            form.id === formId
+              ? { ...form, trainerFeedbackReadAt: form.trainerFeedbackReadAt ?? new Date().toISOString() }
+              : form
+          )
+        });
       }
     }),
     {
