@@ -1,3 +1,4 @@
+﻿// Admin control center overview for users, departments, and platform operations.
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
@@ -41,3 +42,4 @@ export function AdminDashboardPage() {
     </div>
   );
 }
+

@@ -1,9 +1,14 @@
-﻿import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+﻿// Supervisor queue view to pick submitted forms that need review action.
+import { useNavigate } from "react-router-dom";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { StatusBadge } from "../../components/ui/status-badge";
 import { useAppStore } from "../../store/app-store";
+import { Button } from "../../components/ui/button";
 
 export function SupervisorDashboardPage() {
+  const navigate = useNavigate();
   const forms = useAppStore((s) => s.forms);
+  const setSelectedReviewFormId = useAppStore((s) => s.setSelectedReviewFormId);
   const pending = forms.filter((f) => ["Submitted", "Under Review"].includes(f.status));
 
   return (
@@ -34,7 +39,18 @@ export function SupervisorDashboardPage() {
                 <p className="font-medium text-slate-800">{f.title}</p>
                 <p className="text-xs text-slate-500">{f.department} - {f.date}</p>
               </div>
-              <StatusBadge status={f.status} />
+              <div className="flex items-center gap-2">
+                <StatusBadge status={f.status} />
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setSelectedReviewFormId(f.id);
+                    navigate("/supervisor/review");
+                  }}
+                >
+                  Review
+                </Button>
+              </div>
             </div>
           ))}
         </CardContent>
@@ -42,3 +58,4 @@ export function SupervisorDashboardPage() {
     </div>
   );
 }
+

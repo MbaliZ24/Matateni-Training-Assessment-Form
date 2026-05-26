@@ -1,4 +1,7 @@
+﻿// Primary training assessment workflow used by trainer and reused as read-only for supervisor review.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useAppStore } from "../../store/app-store";
+import type { TrainingForm } from "../../types";
 
 const ratingScale = [1, 2, 3, 4, 5] as const;
 
@@ -317,21 +320,31 @@ function SignaturePad({
 
 const tableCell = "border border-brand-line px-3 py-2";
 
-export function ExactAssessmentFormPage() {
+type ExactAssessmentFormPageProps = {
+  readOnly?: boolean;
+  submittedData?: TrainingForm["submittedData"];
+};
+
+export function ExactAssessmentFormPage({ readOnly = false, submittedData }: ExactAssessmentFormPageProps) {
+  const addForm = useAppStore((s) => s.addForm);
+  const currentUser = useAppStore((s) => s.currentUser);
   const sections = ["A", "B", "C", "D", "E", "F", "G"] as const;
   type SectionKey = (typeof sections)[number];
   type UserRole = "trainer" | "trainee" | "supervisor";
   type WorkflowStatus = "draft" | "submitted_to_supervisor" | "approved_by_supervisor";
   const [activeSection, setActiveSection] = useState<SectionKey>("A");
-  const [userRole, setUserRole] = useState<UserRole>("trainer");
+  const [userRole] = useState<UserRole>(readOnly ? "supervisor" : "trainer");
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus>("draft");
   const formRef = useRef<HTMLDivElement | null>(null);
 
-  const [trainingDate, setTrainingDate] = useState("");
-  const [trainingDurationDays, setTrainingDurationDays] = useState("");
-  const [trainingDurationHours, setTrainingDurationHours] = useState("");
-  const [numberOfTrainees, setNumberOfTrainees] = useState("");
-  const [objectives, setObjectives] = useState<string[]>([""]);
+  const [trainerName, setTrainerName] = useState(submittedData?.trainerName ?? currentUser?.name ?? "");
+  const [trainerDepartment, setTrainerDepartment] = useState(currentUser?.department ?? "");
+  const [trainingTitle, setTrainingTitle] = useState(submittedData?.trainingTitle ?? "");
+  const [trainingDate, setTrainingDate] = useState(submittedData?.trainingDate ?? "");
+  const [trainingDurationDays, setTrainingDurationDays] = useState(submittedData?.durationDays ?? "");
+  const [trainingDurationHours, setTrainingDurationHours] = useState(submittedData?.durationHours ?? "");
+  const [numberOfTrainees, setNumberOfTrainees] = useState(submittedData?.numberOfTrainees ?? "");
+  const [objectives, setObjectives] = useState<string[]>(submittedData?.objectives?.length ? submittedData.objectives : [""]);
   const [observedImprovement, setObservedImprovement] = useState<YesNo>("");
   const [signatures, setSignatures] = useState({
     trainer: false,
@@ -350,7 +363,9 @@ export function ExactAssessmentFormPage() {
   });
 
   const [ratings, setRatings] = useState<(number | null)[]>(Array(feedbackStatements.length).fill(null));
-  const [traineeRoster, setTraineeRoster] = useState<TraineeRosterItem[]>([createEmptyRosterItem()]);
+  const [traineeRoster, setTraineeRoster] = useState<TraineeRosterItem[]>(
+    submittedData?.traineeRoster?.length ? submittedData.traineeRoster : [createEmptyRosterItem()]
+  );
 
   const [trainees, setTrainees] = useState<TraineeEval[]>([createEmptyTrainee()]);
 
@@ -402,12 +417,13 @@ export function ExactAssessmentFormPage() {
   };
 
   const visibleSections = sections.filter((section) => {
+    if (section === "B") return false;
     const owner = sectionOwnership[section];
     if (userRole === "trainer") return section === "C" || owner === "Trainer" || owner === "Trainer + Trainee";
     if (userRole === "trainee") return owner === "Trainee" || owner === "Trainer + Trainee";
     return section === "C" || owner === "Trainer" || owner === "Trainer + Trainee";
   });
-  const isSupervisorReviewMode = userRole === "supervisor";
+  const isSupervisorReviewMode = readOnly || userRole === "supervisor";
 
   const visibleSectionIndex = visibleSections.indexOf(activeSection);
   const isFirstSection = visibleSectionIndex === 0;
@@ -452,6 +468,8 @@ export function ExactAssessmentFormPage() {
   };
 
   const handleSubmit = () => {
+    if (readOnly) return;
+
     if (!hasAnyFormInput()) {
       setSubmitModal({
         open: true,
@@ -463,6 +481,39 @@ export function ExactAssessmentFormPage() {
     }
 
     if (userRole === "trainer") {
+      addForm({
+        id: `F-${Date.now()}`,
+        title: trainingTitle || "Training Assessment",
+        trainerId: currentUser?.id ?? "u1",
+        department: trainerDepartment || currentUser?.department || "Operations",
+        date: trainingDate || new Date().toISOString().slice(0, 10),
+        trainees: Number(numberOfTrainees) || traineeRoster.length || 0,
+        feedbackResponses: 0,
+        averageScore: Number(
+          (
+            ratings.filter((score): score is number => score !== null).reduce((sum, score) => sum + score, 0) /
+            Math.max(
+              1,
+              ratings.filter((score): score is number => score !== null).length
+            )
+          ).toFixed(1)
+        ),
+        status: "Submitted",
+        recommendation: "Pending supervisor review",
+        createdAt: new Date().toISOString().slice(0, 10),
+        submittedData: {
+          trainerName,
+          trainingTitle,
+          trainingDate,
+          durationDays: trainingDurationDays,
+          durationHours: trainingDurationHours,
+          numberOfTrainees,
+          objectives,
+          passRate: autoPassRate || "-",
+          averageScoreDisplay: autoAverageScore || "-",
+          traineeRoster
+        }
+      });
       setWorkflowStatus("submitted_to_supervisor");
       setSubmitModal({
         open: true,
@@ -526,45 +577,6 @@ export function ExactAssessmentFormPage() {
             </div>
           </div>
         </header>
-
-        <div className="mb-5 rounded-xl border border-brand-line bg-white p-4 shadow-panel">
-          <p className="mb-2 text-sm font-semibold text-brand-ink">I am filling this form as:</p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setUserRole("trainer")}
-              className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
-                userRole === "trainer"
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-300 bg-white text-slate-700 hover:border-brand-ruby hover:text-brand-ruby"
-              }`}
-            >
-              Trainer
-            </button>
-            <button
-              type="button"
-              onClick={() => setUserRole("trainee")}
-              className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
-                userRole === "trainee"
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-300 bg-white text-slate-700 hover:border-brand-ruby hover:text-brand-ruby"
-              }`}
-            >
-              Trainee
-            </button>
-            <button
-              type="button"
-              onClick={() => setUserRole("supervisor")}
-              className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
-                userRole === "supervisor"
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-300 bg-white text-slate-700 hover:border-brand-ruby hover:text-brand-ruby"
-              }`}
-            >
-              Supervisor Review & Sign-off
-            </button>
-          </div>
-        </div>
 
         {isSupervisorReviewMode ? (
           <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-panel">
@@ -639,9 +651,9 @@ export function ExactAssessmentFormPage() {
           {activeSection === "A" && visibleSections.includes("A") ? (
           <Card section="A" title="Training Information" owner="Trainer" disabled={isSupervisorReviewMode}>
             <div className="grid gap-4 md:grid-cols-2">
-              <TextInput label="Trainer’s Name" />
-              <TextInput label="Trainer’s Department/Role" />
-              <TextInput label="Training Title / Topic" />
+              <TextInput label="Trainer’s Name" value={trainerName} onChange={setTrainerName} readOnly={isSupervisorReviewMode} />
+              <TextInput label="Trainer’s Department/Role" value={trainerDepartment} onChange={setTrainerDepartment} readOnly={isSupervisorReviewMode} />
+              <TextInput label="Training Title / Topic" value={trainingTitle} onChange={setTrainingTitle} readOnly={isSupervisorReviewMode} />
               <TextInput label="Training Date" type="date" value={trainingDate} onChange={setTrainingDate} />
               <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
                 <div className="grid gap-3 md:grid-cols-2">
@@ -667,6 +679,7 @@ export function ExactAssessmentFormPage() {
                   <select
                     value={numberOfTrainees}
                     onChange={(event) => setNumberOfTrainees(event.target.value)}
+                    disabled={isSupervisorReviewMode}
                     className="rounded-lg border border-brand-line bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100"
                   >
                     <option value="">Select number</option>
@@ -694,7 +707,7 @@ export function ExactAssessmentFormPage() {
           </Card>
           ) : null}
 
-          {activeSection === "B" && visibleSections.includes("B") ? (
+          {activeSection === "A" && visibleSections.includes("A") ? (
           <Card section="B" title="Training Objectives" owner="Trainer" disabled={isSupervisorReviewMode}>
             <p className="mb-3 text-sm text-slate-600">Please list the key learning objectives for this training session.</p>
             <div className="space-y-3">
@@ -1238,7 +1251,7 @@ export function ExactAssessmentFormPage() {
               disabled={isFirstSection}
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-ruby hover:text-brand-ruby disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300 disabled:opacity-100"
             >
-              ← Back
+              ? Back
             </button>
             <p className="text-sm font-medium text-slate-500">
               Section {activeSection}
@@ -1262,7 +1275,7 @@ export function ExactAssessmentFormPage() {
                   onClick={goToNextSection}
                   className="rounded-lg border border-slate-700 bg-slate-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
                 >
-                  Next →
+                  Next ?
                 </button>
               )}
             </div>
@@ -1285,7 +1298,7 @@ export function ExactAssessmentFormPage() {
                     : "bg-red-100 text-red-700"
                 }`}
               >
-                {submitModal.kind === "success" ? "✓" : "!"}
+                {submitModal.kind === "success" ? "?" : "!"}
               </span>
               <h3 className="text-lg font-semibold text-brand-ink">{submitModal.title}</h3>
             </div>
@@ -1305,4 +1318,9 @@ export function ExactAssessmentFormPage() {
     </main>
   );
 }
+
+
+
+
+
 

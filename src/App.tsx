@@ -1,7 +1,7 @@
+﻿// Central route map: keeps role-based navigation predictable in one place.
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
-import { TrainerDashboardPage } from "./pages/trainer/TrainerDashboardPage";
 import { ExactAssessmentFormPage } from "./pages/trainer/ExactAssessmentFormPage";
 import { TraineeFeedbackPage } from "./pages/trainee/TraineeFeedbackPage";
 import { SupervisorDashboardPage } from "./pages/supervisor/SupervisorDashboardPage";
@@ -37,7 +37,7 @@ export default function App() {
       <Route path="/login" element={user ? <Navigate to={dashboardRouteByRole(user.role)} replace /> : <LoginPage />} />
 
       <Route element={<Protected role="trainer" title="Trainer Workspace" />}>
-        <Route path="/trainer" element={<TrainerDashboardPage />} />
+        <Route path="/trainer" element={<Navigate to="/trainer/create" replace />} />
         <Route path="/trainer/create" element={<ExactAssessmentFormPage />} />
         <Route path="/trainee-feedback" element={<TraineeFeedbackPage />} />
       </Route>
@@ -56,3 +56,4 @@ export default function App() {
     </Routes>
   );
 }
+

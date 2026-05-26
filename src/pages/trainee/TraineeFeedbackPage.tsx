@@ -1,3 +1,4 @@
+﻿// Mobile-friendly feedback capture screen trainees can complete quickly.
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { useState } from "react";
@@ -25,3 +26,4 @@ export function TraineeFeedbackPage() {
     </div>
   );
 }
+

@@ -1,3 +1,4 @@
+﻿// Reporting workspace with mock analytics cards and trend visuals.
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { useAppStore } from "../../store/app-store";
 
@@ -46,3 +47,4 @@ export function ReportsAnalyticsPage() {
     </div>
   );
 }
+

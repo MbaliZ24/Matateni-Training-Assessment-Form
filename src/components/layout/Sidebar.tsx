@@ -1,16 +1,13 @@
-﻿import { LayoutDashboard, ClipboardList, MessageSquare, ShieldCheck, Users, BarChart3, FileCheck2 } from "lucide-react";
+﻿// Left navigation tuned per role so each user only sees relevant actions.
+import { ClipboardList, ShieldCheck, Users, BarChart3, FileCheck2 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import type { Role } from "../../types";
 
 const navByRole: Record<Role, { to: string; label: string; icon: React.ComponentType<{ className?: string }> }[]> = {
-  trainer: [
-    { to: "/trainer", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/trainer/create", label: "Training Assessment Form", icon: ClipboardList },
-    { to: "/trainee-feedback", label: "Trainee Feedback", icon: MessageSquare }
-  ],
+  trainer: [{ to: "/trainer/create", label: "Training Assessment Form", icon: ClipboardList }],
   supervisor: [
-    { to: "/supervisor", label: "Dashboard", icon: LayoutDashboard },
+    { to: "/supervisor", label: "Dashboard", icon: ShieldCheck },
     { to: "/supervisor/review", label: "Review & Sign-Off", icon: FileCheck2 }
   ],
   admin: [
@@ -20,9 +17,9 @@ const navByRole: Record<Role, { to: string; label: string; icon: React.Component
   ]
 };
 
-export function Sidebar({ role }: { role: Role }) {
+export function Sidebar({ role, onLogout }: { role: Role; onLogout?: () => void }) {
   return (
-    <aside className="h-screen w-72 shrink-0 border-r border-slate-200 bg-white p-4">
+    <aside className="sticky top-0 h-screen w-72 shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-4">
       <div className="mb-7 rounded-xl border border-slate-200 bg-slate-50 p-3">
         <img src="/matateni-logo.png" alt="Matateni" className="h-12 w-full object-contain object-left" />
       </div>
@@ -46,6 +43,17 @@ export function Sidebar({ role }: { role: Role }) {
           );
         })}
       </nav>
+      {(role === "trainer" || role === "supervisor") && onLogout ? (
+        <div className="mt-6 border-t border-slate-200 pt-4">
+          <button
+            type="button"
+            onClick={onLogout}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-ruby hover:text-brand-ruby"
+          >
+            Logout
+          </button>
+        </div>
+      ) : null}
     </aside>
   );
 }

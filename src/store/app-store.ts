@@ -1,3 +1,4 @@
+﻿// Lightweight demo state store (mock auth + mock form workflow) for frontend-only behavior.
 import { create } from "zustand";
 import type { NotificationItem, Role, TrainingForm, User } from "../types";
 
@@ -25,9 +26,11 @@ type AppState = {
   forms: TrainingForm[];
   notifications: NotificationItem[];
   currentUser: User | null;
+  selectedReviewFormId: string | null;
   loading: boolean;
   login: (email: string, password: string) => boolean;
   logout: () => void;
+  setSelectedReviewFormId: (id: string | null) => void;
   updateFormStatus: (id: string, status: TrainingForm["status"]) => void;
   addForm: (form: TrainingForm) => void;
 };
@@ -37,6 +40,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   forms,
   notifications,
   currentUser: null,
+  selectedReviewFormId: null,
   loading: false,
   login: (email, password) => {
     const user = get().users.find((u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
@@ -45,12 +49,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     return true;
   },
   logout: () => set({ currentUser: null }),
+  setSelectedReviewFormId: (id) => set({ selectedReviewFormId: id }),
   updateFormStatus: (id, status) => set({ forms: get().forms.map((f) => (f.id === id ? { ...f, status } : f)) }),
   addForm: (form) => set({ forms: [form, ...get().forms] })
 }));
 
 export function dashboardRouteByRole(role: Role) {
-  if (role === "trainer") return "/trainer";
+  if (role === "trainer") return "/trainer/create";
   if (role === "supervisor") return "/supervisor";
   return "/admin";
 }
+
+

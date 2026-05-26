@@ -1,3 +1,4 @@
+﻿// Shared domain types so pages, store, and UI stay aligned.
 export type Role = "trainer" | "supervisor" | "admin";
 
 export type Status =
@@ -31,6 +32,18 @@ export type TrainingForm = {
   status: Status;
   recommendation: string;
   createdAt: string;
+  submittedData?: {
+    trainerName: string;
+    trainingTitle: string;
+    trainingDate: string;
+    durationDays: string;
+    durationHours: string;
+    numberOfTrainees: string;
+    objectives: string[];
+    passRate: string;
+    averageScoreDisplay: string;
+    traineeRoster: { name: string; departmentOrRole: string; attendance: "Yes" | "No" | "" }[];
+  };
 };
 
 export type NotificationItem = {
@@ -40,3 +53,4 @@ export type NotificationItem = {
   time: string;
   read: boolean;
 };
+

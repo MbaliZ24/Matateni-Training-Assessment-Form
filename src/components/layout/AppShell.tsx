@@ -1,3 +1,4 @@
+﻿// Shared app chrome: sidebar always, topbar only where the role actually needs it.
 import { motion } from "framer-motion";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
@@ -15,13 +16,15 @@ export function AppShell({
   notifications: NotificationItem[];
   onLogout: () => void;
 }) {
+  const showTopbar = role === "admin";
+
   return (
     <div className="flex min-h-screen bg-slate-100">
       <div className="hidden lg:block">
-        <Sidebar role={role} />
+        <Sidebar role={role} onLogout={onLogout} />
       </div>
       <div className="min-w-0 flex-1">
-        <Topbar title={title} notifications={notifications} onLogout={onLogout} />
+        {showTopbar ? <Topbar title={title} notifications={notifications} onLogout={onLogout} /> : null}
         <motion.main
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -34,3 +37,4 @@ export function AppShell({
     </div>
   );
 }
+
