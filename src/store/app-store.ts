@@ -1,5 +1,6 @@
 ﻿// Lightweight demo state store (mock auth + mock form workflow) for frontend-only behavior.
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { NotificationItem, Role, TrainingForm, User } from "../types";
 
 const users: User[] = [
@@ -41,60 +42,72 @@ type AppState = {
     feedbackDate: string;
     averageScore: number;
     comment: string;
+    statementRatings: (number | null)[];
   }) => boolean;
 };
 
-export const useAppStore = create<AppState>((set, get) => ({
-  users,
-  forms,
-  notifications,
-  currentUser: null,
-  selectedReviewFormId: null,
-  loading: false,
-  login: (email, password) => {
-    const user = get().users.find((u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
-    if (!user) return false;
-    set({ currentUser: user });
-    return true;
-  },
-  logout: () => set({ currentUser: null }),
-  setSelectedReviewFormId: (id) => set({ selectedReviewFormId: id }),
-  updateFormStatus: (id, status) => set({ forms: get().forms.map((f) => (f.id === id ? { ...f, status } : f)) }),
-  addForm: (form) => set({ forms: [form, ...get().forms] }),
-  submitTraineeFeedback: (payload) => {
-    const target = get().forms.find((form) => form.id === payload.formId);
-    if (!target) return false;
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      users,
+      forms,
+      notifications,
+      currentUser: null,
+      selectedReviewFormId: null,
+      loading: false,
+      login: (email, password) => {
+        const user = get().users.find((u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
+        if (!user) return false;
+        set({ currentUser: user });
+        return true;
+      },
+      logout: () => set({ currentUser: null }),
+      setSelectedReviewFormId: (id) => set({ selectedReviewFormId: id }),
+      updateFormStatus: (id, status) => set({ forms: get().forms.map((f) => (f.id === id ? { ...f, status } : f)) }),
+      addForm: (form) =>
+        set({
+          forms: [form, ...get().forms.filter((existingForm) => existingForm.id !== form.id)]
+        }),
+      submitTraineeFeedback: (payload) => {
+        const target = get().forms.find((form) => form.id === payload.formId);
+        if (!target) return false;
 
-    set({
-      forms: get().forms.map((form) => {
-        if (form.id !== payload.formId) return form;
+        set({
+          forms: get().forms.map((form) => {
+            if (form.id !== payload.formId) return form;
 
-        const nextCount = form.feedbackResponses + 1;
-        const nextAverage =
-          (form.averageScore * form.feedbackResponses + payload.averageScore) / Math.max(1, nextCount);
+            const nextCount = form.feedbackResponses + 1;
+            const nextAverage =
+              (form.averageScore * form.feedbackResponses + payload.averageScore) / Math.max(1, nextCount);
 
-        return {
-          ...form,
-          feedbackResponses: nextCount,
-          averageScore: Number(nextAverage.toFixed(1)),
-          status: "Submitted",
-          supervisorOnlyFeedback: [
-            ...(form.supervisorOnlyFeedback ?? []),
-            {
-              traineeName: payload.traineeName,
-              employeeId: payload.employeeId,
-              departmentRole: payload.departmentRole,
-              feedbackDate: payload.feedbackDate,
-              averageScore: payload.averageScore,
-              comment: payload.comment
-            }
-          ]
-        };
-      })
-    });
-    return true;
-  }
-}));
+            return {
+              ...form,
+              feedbackResponses: nextCount,
+              averageScore: Number(nextAverage.toFixed(1)),
+              status: "Submitted",
+              supervisorOnlyFeedback: [
+                ...(form.supervisorOnlyFeedback ?? []),
+                {
+                  traineeName: payload.traineeName,
+                  employeeId: payload.employeeId,
+                  departmentRole: payload.departmentRole,
+                  feedbackDate: payload.feedbackDate,
+                  averageScore: payload.averageScore,
+                  comment: payload.comment,
+                  statementRatings: payload.statementRatings
+                }
+              ]
+            };
+          })
+        });
+        return true;
+      }
+    }),
+    {
+      name: "matateni-app-store"
+    }
+  )
+);
 
 export function dashboardRouteByRole(role: Role) {
   if (role === "trainer") return "/trainer/create";

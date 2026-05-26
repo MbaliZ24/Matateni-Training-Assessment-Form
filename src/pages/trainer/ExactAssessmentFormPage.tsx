@@ -319,23 +319,44 @@ function SignaturePad({
 }
 
 const tableCell = "border border-brand-line px-3 py-2";
+const sectionKeys = ["A", "B", "C", "D", "F", "G"] as const;
+type SectionKey = (typeof sectionKeys)[number];
 
 type ExactAssessmentFormPageProps = {
   readOnly?: boolean;
   submittedData?: TrainingForm["submittedData"];
 };
 
+type TrainerDraft = {
+  activeSection: SectionKey;
+  distributedFormId: string | null;
+  trainerName: string;
+  trainerDepartment: string;
+  trainingTitle: string;
+  trainingDate: string;
+  trainingDurationDays: string;
+  trainingDurationHours: string;
+  numberOfTrainees: string;
+  objectives: string[];
+  observedImprovement: YesNo;
+  ratings: (number | null)[];
+  traineeRoster: TraineeRosterItem[];
+  trainees: TraineeEval[];
+  commentsVersion: number;
+};
+
 export function ExactAssessmentFormPage({ readOnly = false, submittedData }: ExactAssessmentFormPageProps) {
   const addForm = useAppStore((s) => s.addForm);
+  const forms = useAppStore((s) => s.forms);
   const currentUser = useAppStore((s) => s.currentUser);
-  const sections = ["A", "B", "C", "D", "E", "F", "G"] as const;
-  type SectionKey = (typeof sections)[number];
+  const sections = sectionKeys;
   type UserRole = "trainer" | "trainee" | "supervisor";
   type WorkflowStatus = "draft" | "submitted_to_supervisor" | "approved_by_supervisor";
   const [activeSection, setActiveSection] = useState<SectionKey>("A");
   const [userRole] = useState<UserRole>(readOnly ? "supervisor" : "trainer");
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus>("draft");
   const formRef = useRef<HTMLDivElement | null>(null);
+  const [distributedFormId, setDistributedFormId] = useState<string | null>(null);
 
   const [trainerName, setTrainerName] = useState(submittedData?.trainerName ?? currentUser?.name ?? "");
   const [trainerDepartment, setTrainerDepartment] = useState(currentUser?.department ?? "");
@@ -368,6 +389,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
   );
 
   const [trainees, setTrainees] = useState<TraineeEval[]>([createEmptyTrainee()]);
+  const [draftRestored, setDraftRestored] = useState(false);
 
   const autoAverageScore = useMemo(() => {
     const selected = ratings.filter((score): score is number => score !== null);
@@ -382,6 +404,64 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
     const passed = evaluated.filter((t) => t.understanding === "Yes" && t.independent === "Yes").length;
     return `${passed} / ${evaluated.length} trainees`;
   }, [trainees]);
+
+  const draftStorageKey = useMemo(() => {
+    if (readOnly || userRole !== "trainer") return "";
+    const userId = currentUser?.id ?? "anonymous";
+    return `matateni-trainer-draft:${userId}`;
+  }, [readOnly, userRole, currentUser?.id]);
+
+  const hasObjectiveContent = useMemo(
+    () => objectives.some((objective) => objective.trim().length > 0),
+    [objectives]
+  );
+
+  const isSectionABComplete = useMemo(
+    () =>
+      trainerName.trim().length > 0 &&
+      trainerDepartment.trim().length > 0 &&
+      trainingTitle.trim().length > 0 &&
+      trainingDate.trim().length > 0 &&
+      numberOfTrainees.trim().length > 0 &&
+      hasObjectiveContent,
+    [trainerName, trainerDepartment, trainingTitle, trainingDate, numberOfTrainees, hasObjectiveContent]
+  );
+
+  const effectiveDistributedFormId = useMemo(() => {
+    if (distributedFormId) return distributedFormId;
+    const fallbackForm = forms
+      .filter((form) => form.trainerId === (currentUser?.id ?? ""))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    return fallbackForm?.id ?? null;
+  }, [distributedFormId, forms, currentUser?.id]);
+
+  const traineeFeedbackLink = useMemo(() => {
+    if (!effectiveDistributedFormId) return "";
+    const origin =
+      typeof window !== "undefined" && window.location?.origin ? window.location.origin : "";
+    return `${origin}/trainee-feedback?formId=${effectiveDistributedFormId}`;
+  }, [effectiveDistributedFormId]);
+
+  const traineeQrUrl = useMemo(() => {
+    if (!traineeFeedbackLink) return "";
+    return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
+      traineeFeedbackLink
+    )}`;
+  }, [traineeFeedbackLink]);
+
+  const linkedForm = useMemo(
+    () =>
+      effectiveDistributedFormId
+        ? forms.find((form) => form.id === effectiveDistributedFormId)
+        : undefined,
+    [forms, effectiveDistributedFormId]
+  );
+
+  useEffect(() => {
+    if (!distributedFormId && effectiveDistributedFormId) {
+      setDistributedFormId(effectiveDistributedFormId);
+    }
+  }, [distributedFormId, effectiveDistributedFormId]);
 
   useEffect(() => {
     if (!numberOfTrainees) return;
@@ -398,6 +478,115 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
     });
   }, [numberOfTrainees]);
 
+  useEffect(() => {
+    if (!draftStorageKey) return;
+    const rawDraft = localStorage.getItem(draftStorageKey);
+    if (!rawDraft) return;
+
+    try {
+      const parsed = JSON.parse(rawDraft) as TrainerDraft;
+      setDistributedFormId(parsed.distributedFormId ?? null);
+      setTrainerName(parsed.trainerName ?? "");
+      setTrainerDepartment(parsed.trainerDepartment ?? "");
+      setTrainingTitle(parsed.trainingTitle ?? "");
+      setTrainingDate(parsed.trainingDate ?? "");
+      setTrainingDurationDays(parsed.trainingDurationDays ?? "");
+      setTrainingDurationHours(parsed.trainingDurationHours ?? "");
+      setNumberOfTrainees(parsed.numberOfTrainees ?? "");
+      setObjectives(parsed.objectives?.length ? parsed.objectives : [""]);
+      setObservedImprovement(parsed.observedImprovement ?? "");
+      setRatings(
+        Array.isArray(parsed.ratings) && parsed.ratings.length === feedbackStatements.length
+          ? parsed.ratings
+          : Array(feedbackStatements.length).fill(null)
+      );
+      setTraineeRoster(parsed.traineeRoster?.length ? parsed.traineeRoster : [createEmptyRosterItem()]);
+      setTrainees(parsed.trainees?.length ? parsed.trainees : [createEmptyTrainee()]);
+      if (sections.includes(parsed.activeSection)) {
+        setActiveSection(parsed.activeSection);
+      }
+      setDraftRestored(true);
+    } catch {
+      localStorage.removeItem(draftStorageKey);
+    }
+  }, [draftStorageKey, sections]);
+
+  useEffect(() => {
+    if (!draftStorageKey) return;
+    const draftPayload: TrainerDraft = {
+      activeSection,
+      distributedFormId,
+      trainerName,
+      trainerDepartment,
+      trainingTitle,
+      trainingDate,
+      trainingDurationDays,
+      trainingDurationHours,
+      numberOfTrainees,
+      objectives,
+      observedImprovement,
+      ratings,
+      traineeRoster,
+      trainees,
+      commentsVersion: 1
+    };
+
+    localStorage.setItem(draftStorageKey, JSON.stringify(draftPayload));
+  }, [
+    draftStorageKey,
+    activeSection,
+    trainerName,
+    trainerDepartment,
+    distributedFormId,
+    trainingTitle,
+    trainingDate,
+    trainingDurationDays,
+    trainingDurationHours,
+    numberOfTrainees,
+    objectives,
+    observedImprovement,
+    ratings,
+    traineeRoster,
+    trainees
+  ]);
+
+  useEffect(() => {
+    if (userRole !== "trainer") return;
+    const submittedFeedback = linkedForm?.supervisorOnlyFeedback ?? [];
+    if (!submittedFeedback.length) return;
+
+    const aggregatedRatings = Array.from({ length: feedbackStatements.length }, (_, statementIndex) => {
+      const values = submittedFeedback
+        .map((entry) => entry.statementRatings?.[statementIndex])
+        .filter((value): value is number => typeof value === "number" && value > 0);
+
+      if (!values.length) return null;
+      const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+      return Math.round(avg);
+    });
+
+    setRatings(aggregatedRatings);
+
+    setTraineeRoster((prev) => {
+      const hasManualRosterData = prev.some(
+        (row) => row.name.trim() !== "" || row.departmentOrRole.trim() !== "" || row.attendance !== ""
+      );
+      if (hasManualRosterData) return prev;
+
+      const rowsFromFeedback: TraineeRosterItem[] = submittedFeedback.map((entry) => ({
+        name: entry.traineeName || "",
+        departmentOrRole: entry.departmentRole || "",
+        attendance: "Yes"
+      }));
+
+      return rowsFromFeedback.length ? rowsFromFeedback : [createEmptyRosterItem()];
+    });
+
+    if (!numberOfTrainees && submittedFeedback.length > 0) {
+      setNumberOfTrainees(String(submittedFeedback.length));
+    }
+  }, [userRole, linkedForm, numberOfTrainees]);
+
   const updateObjective = (index: number, value: string) => {
     setObjectives((prev) => {
       const next = [...prev];
@@ -411,7 +600,6 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
     B: "Trainer",
     C: "Trainee",
     D: "Trainer",
-    E: "Trainer",
     F: "Trainer",
     G: "Trainer"
   };
@@ -467,38 +655,31 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
     return hasFieldValue || signatures.trainer || signatures.supervisor;
   };
 
-  const handleSubmit = () => {
-    if (readOnly) return;
+  const handleDistributeTraineeQr = () => {
+    if (readOnly || userRole !== "trainer") return;
 
-    if (!hasAnyFormInput()) {
+    if (!isSectionABComplete) {
       setSubmitModal({
         open: true,
         kind: "error",
-        title: "Form Is Empty",
-        message: "Please fill in at least one section before submitting."
+        title: "Complete A+B First",
+        message:
+          "Please complete Section A + Training Objectives before generating and distributing the trainee QR code."
       });
       return;
     }
 
-    if (userRole === "trainer") {
-      const newFormId = `F-${Date.now()}`;
+    const formId = distributedFormId ?? `F-${Date.now()}`;
+    if (!distributedFormId) {
       addForm({
-        id: newFormId,
+        id: formId,
         title: trainingTitle || "Training Assessment",
         trainerId: currentUser?.id ?? "u1",
         department: trainerDepartment || currentUser?.department || "Operations",
         date: trainingDate || new Date().toISOString().slice(0, 10),
         trainees: Number(numberOfTrainees) || traineeRoster.length || 0,
         feedbackResponses: 0,
-        averageScore: Number(
-          (
-            ratings.filter((score): score is number => score !== null).reduce((sum, score) => sum + score, 0) /
-            Math.max(
-              1,
-              ratings.filter((score): score is number => score !== null).length
-            )
-          ).toFixed(1)
-        ),
+        averageScore: 0,
         status: "Waiting for Feedback",
         recommendation: "Pending supervisor review",
         createdAt: new Date().toISOString().slice(0, 10),
@@ -515,13 +696,84 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
           traineeRoster
         }
       });
+      setDistributedFormId(formId);
+    }
+
+    setSubmitModal({
+      open: true,
+      kind: "success",
+      title: "Trainee QR Ready",
+      message: `Distribute this link to trainees: /trainee-feedback?formId=${formId}`
+    });
+  };
+
+  const handleSubmit = () => {
+    if (readOnly) return;
+
+    if (!hasAnyFormInput()) {
+      setSubmitModal({
+        open: true,
+        kind: "error",
+        title: "Form Is Empty",
+        message: "Please fill in at least one section before submitting."
+      });
+      return;
+    }
+
+    if (userRole === "trainer") {
+      const newFormId = distributedFormId ?? `F-${Date.now()}`;
+      const existingForm = forms.find((form) => form.id === newFormId);
+      const computedAverageScore = Number(
+        (
+          ratings.filter((score): score is number => score !== null).reduce((sum, score) => sum + score, 0) /
+          Math.max(
+            1,
+            ratings.filter((score): score is number => score !== null).length
+          )
+        ).toFixed(1)
+      );
+
+      addForm({
+        id: newFormId,
+        title: trainingTitle || "Training Assessment",
+        trainerId: currentUser?.id ?? "u1",
+        department: trainerDepartment || currentUser?.department || "Operations",
+        date: trainingDate || new Date().toISOString().slice(0, 10),
+        trainees: Number(numberOfTrainees) || traineeRoster.length || 0,
+        feedbackResponses: existingForm?.feedbackResponses ?? 0,
+        averageScore:
+          existingForm && existingForm.feedbackResponses > 0
+            ? existingForm.averageScore
+            : computedAverageScore,
+        status:
+          (existingForm?.feedbackResponses ?? 0) > 0 ? "Submitted" : "Waiting for Feedback",
+        recommendation: "Pending supervisor review",
+        createdAt: existingForm?.createdAt ?? new Date().toISOString().slice(0, 10),
+        submittedData: {
+          trainerName,
+          trainingTitle,
+          trainingDate,
+          durationDays: trainingDurationDays,
+          durationHours: trainingDurationHours,
+          numberOfTrainees,
+          objectives,
+          passRate: autoPassRate || "-",
+          averageScoreDisplay: autoAverageScore || "-",
+          traineeRoster
+        },
+        supervisorOnlyFeedback: existingForm?.supervisorOnlyFeedback
+      });
+      setDistributedFormId(newFormId);
       setWorkflowStatus("submitted_to_supervisor");
       setSubmitModal({
         open: true,
         kind: "success",
         title: "Submitted To Supervisor",
-        message: `Trainer response submitted. Share this trainee link: /trainee-feedback?formId=${newFormId}`
+        message: `Trainer response submitted. Trainee link: /trainee-feedback?formId=${newFormId}`
       });
+      if (draftStorageKey) {
+        localStorage.removeItem(draftStorageKey);
+      }
       return;
     }
 
@@ -612,8 +864,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
                 A: "Training Info",
                 B: "Objectives",
                 C: "Feedback",
-                D: "Skills Check",
-                E: "Follow-up",
+                D: "Skills & Follow-up",
                 F: "Reflection",
                 G: "Sign-off"
               };
@@ -649,6 +900,11 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
         </div>
 
         <div className="space-y-5">
+          {!isSupervisorReviewMode && draftRestored ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-panel">
+              Saved draft restored. You can continue where you left off.
+            </div>
+          ) : null}
           {activeSection === "A" && visibleSections.includes("A") ? (
           <Card section="A" title="Training Information" owner="Trainer" disabled={isSupervisorReviewMode}>
             <div className="grid gap-4 md:grid-cols-2">
@@ -704,6 +960,54 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
               <div className="md:col-span-2">
                 <TextInput label="Target User Group (e.g., system users, operators, managers)" />
               </div>
+
+              {!isSupervisorReviewMode ? (
+                <div className="md:col-span-2 rounded-xl border border-brand-line bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-brand-ink">Trainee Link / QR Distribution</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    The trainee QR code is available only after Section A + B are completed by the trainer.
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleDistributeTraineeQr}
+                      disabled={!isSectionABComplete}
+                      className="rounded-lg border border-slate-700 bg-slate-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300"
+                    >
+                      Generate Trainee QR
+                    </button>
+                    <span className="text-xs font-medium text-slate-500">
+                      {isSectionABComplete ? "A+B complete" : "Complete required A+B fields to enable"}
+                    </span>
+                  </div>
+
+                  {distributedFormId && traineeFeedbackLink ? (
+                    <div className="mt-4 grid gap-3 md:grid-cols-[220px,1fr] md:items-start">
+                      <img
+                        src={traineeQrUrl}
+                        alt="Trainee feedback QR code"
+                        className="h-[220px] w-[220px] rounded-lg border border-brand-line bg-white p-2"
+                      />
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Trainee Link</p>
+                        <p className="break-all rounded-lg border border-brand-line bg-white p-2 text-xs text-slate-700">
+                          {traineeFeedbackLink}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!traineeFeedbackLink) return;
+                            navigator.clipboard?.writeText(traineeFeedbackLink);
+                          }}
+                          className="rounded-lg border border-brand-line bg-white px-3 py-2 text-xs font-semibold text-brand-ink transition hover:border-brand-ruby hover:text-brand-ruby"
+                        >
+                          Copy Link
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </Card>
           ) : null}
@@ -904,7 +1208,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
           ) : null}
 
           {activeSection === "D" && visibleSections.includes("D") ? (
-          <Card section="D" title="Knowledge / Skills Check (Trainer Assessment)" owner="Trainer" disabled={isSupervisorReviewMode}>
+          <Card section="D" title="Knowledge / Skills Check + Workplace Follow-up" owner="Trainer" disabled={isSupervisorReviewMode}>
             <p className="mb-3 text-sm text-slate-600">Complete after training, based on observation, Q&A, or practical test.</p>
 
             <div className="mb-3 flex flex-wrap gap-2">
@@ -1095,12 +1399,14 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData }: Exa
             <div className="mt-4 max-w-md">
               <TextInput label="Overall pass rate (auto-calculated)" value={autoPassRate || "-"} readOnly />
             </div>
-          </Card>
-          ) : null}
 
-          {activeSection === "E" && visibleSections.includes("E") ? (
-          <Card section="E" title="Workplace Application & Follow-up" owner="Trainer / Supervisor / Line Manager" disabled={false}>
-            <p className="mb-3 text-sm font-semibold text-brand-ruby">To be completed by trainer with input from supervisor/line manager, 2-4 weeks post-training.</p>
+            <div className="my-6 h-px bg-slate-200" />
+            <p className="mb-3 text-sm font-semibold text-brand-ruby">
+              Workplace Application & Follow-up
+            </p>
+            <p className="mb-3 text-sm text-slate-600">
+              To be completed by trainer with input from supervisor/line manager, 2-4 weeks post-training.
+            </p>
             <div className="space-y-5">
               <div className="rounded-xl border border-brand-line bg-slate-50 p-4">
                 <p className="mb-3 text-sm font-semibold text-brand-ink">Follow-up Participants</p>

@@ -51,6 +51,7 @@ export type TrainingForm = {
     feedbackDate: string;
     averageScore: number;
     comment: string;
+    statementRatings?: (number | null)[];
   }[];
 };
 

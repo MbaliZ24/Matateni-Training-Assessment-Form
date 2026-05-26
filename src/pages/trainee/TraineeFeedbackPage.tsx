@@ -29,6 +29,7 @@ export function TraineeFeedbackPage() {
   const [ratings, setRatings] = useState<(number | null)[]>(Array(feedbackStatements.length).fill(null));
   const [comments, setComments] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [showThanksModal, setShowThanksModal] = useState(false);
 
   const averageScore = useMemo(() => {
     const selected = ratings.filter((score): score is number => score !== null);
@@ -152,9 +153,21 @@ export function TraineeFeedbackPage() {
                   departmentRole,
                   feedbackDate,
                   averageScore: averageValue,
-                  comment: comments
+                  comment: comments,
+                  statementRatings: ratings
                 });
                 setSubmitted(ok);
+
+                if (ok) {
+                  // Clear all local form fields so trainee-entered info is not retained on screen.
+                  setTraineeName("");
+                  setEmployeeId("");
+                  setDepartmentRole("");
+                  setFeedbackDate("");
+                  setRatings(Array(feedbackStatements.length).fill(null));
+                  setComments("");
+                  setShowThanksModal(true);
+                }
               }}
               className="min-w-40"
             >
@@ -165,6 +178,31 @@ export function TraineeFeedbackPage() {
           </div>
         </CardContent>
       </Card>
+
+      {showThanksModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <div className="mx-auto mb-3 flex size-16 items-center justify-center rounded-full bg-rose-100 p-2">
+              <img
+                src="/matateni-logo.png"
+                alt="Matateni logo"
+                className="h-10 w-10 object-contain"
+              />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-900">Thank You!</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              We really appreciate your feedback.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowThanksModal(false)}
+              className="mt-5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-ruby hover:text-brand-ruby"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
