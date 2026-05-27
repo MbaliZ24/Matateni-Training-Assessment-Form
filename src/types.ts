@@ -46,6 +46,15 @@ export type TrainingForm = {
     passRate: string;
     averageScoreDisplay: string;
     observedImprovement?: "Yes" | "No" | "";
+    trainingFormats?: string[];
+    targetUserGroup?: string;
+    applicationExtent?: string;
+    observedImprovementDetails?: string;
+    supportNeeded?: string;
+    barriersComment?: string;
+    workedWellComment?: string;
+    effectivenessRating?: string;
+    recommendationChoice?: string;
     trainerFutureSessionComment?: string;
     supervisorFutureSessionComment?: string;
     trainees?: { name: string; understanding: "Yes" | "No" | ""; independent: "Yes" | "No" | "" }[];

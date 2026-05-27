@@ -30,7 +30,7 @@ export function SupervisorArchivePage() {
         .filter(
           (f) =>
             f.assignedSupervisorId === currentUser?.id &&
-            ["Submitted", "Under Review", "Approved", "Needs Correction", "Rejected"].includes(f.status)
+            ["Approved", "Needs Correction", "Rejected"].includes(f.status)
         )
         .sort((a, b) => b.date.localeCompare(a.date)),
     [forms, currentUser?.id]
@@ -92,7 +92,7 @@ export function SupervisorArchivePage() {
                           type="button"
                           onClick={() => {
                             setSelectedReviewFormId(f.id);
-                            navigate("/supervisor/review");
+                            navigate(`/supervisor/review?formId=${encodeURIComponent(f.id)}`);
                           }}
                           className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100"
                           title="View Signed Form"

@@ -94,7 +94,8 @@ export const useAppStore = create<AppState>()(
               ...form,
               feedbackResponses: nextCount,
               averageScore: Number(nextAverage.toFixed(1)),
-              status: "Submitted",
+              // Keep drafts as drafts until trainer explicitly submits the full form.
+              status: form.status === "Draft" ? "Draft" : form.status,
               supervisorOnlyFeedback: [
                 ...(form.supervisorOnlyFeedback ?? []),
                 {
@@ -187,10 +188,10 @@ export const useAppStore = create<AppState>()(
       }
     }),
     {
-      name: "matateni-app-store-v4",
+      name: "matateni-app-store-v5",
       merge: (persistedState, currentState) => {
         const persisted = (persistedState ?? {}) as Partial<AppState>;
-        const persistedForms = Array.isArray(persisted.forms) ? persisted.forms : currentState.forms;
+        const persistedForms = Array.isArray(persisted.forms) ? persisted.forms : [];
         const migratedForms = persistedForms.map((form) => {
           if (form.assignedSupervisorId) return form;
           const trainer = users.find((u) => u.id === form.trainerId);

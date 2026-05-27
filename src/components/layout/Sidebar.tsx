@@ -1,5 +1,16 @@
 ﻿// Left navigation tuned per role so each user only sees relevant actions.
-import { ClipboardList, ShieldCheck, Users, BarChart3, FileCheck2, MessageSquare, FileText } from "lucide-react";
+import {
+  ClipboardList,
+  ShieldCheck,
+  Users,
+  BarChart3,
+  FileCheck2,
+  MessageSquare,
+  FileText,
+  ListChecks,
+  Activity,
+  Settings
+} from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import type { Role } from "../../types";
@@ -18,8 +29,12 @@ const navByRole: Record<Role, { to: string; label: string; icon: React.Component
   ],
   admin: [
     { to: "/admin", label: "Dashboard", icon: Users },
-    { to: "/reports", label: "Reports & Analytics", icon: BarChart3 },
-    { to: "/supervisor", label: "Review Queue", icon: ShieldCheck }
+    { to: "/admin/assessments", label: "Assessments", icon: ClipboardList },
+    { to: "/admin/supervisor-reviews", label: "Supervisor Reviews", icon: ListChecks },
+    { to: "/admin/feedback", label: "Feedback", icon: MessageSquare },
+    { to: "/admin/reports", label: "Reports", icon: BarChart3 },
+    { to: "/admin/audit-log", label: "Audit Log", icon: Activity },
+    { to: "/admin/settings", label: "Settings", icon: Settings }
   ]
 };
 
@@ -49,7 +64,7 @@ export function Sidebar({ role, onLogout }: { role: Role; onLogout?: () => void 
           );
         })}
       </nav>
-      {(role === "trainer" || role === "supervisor") && onLogout ? (
+      {onLogout ? (
         <div className="mt-6 border-t border-slate-200 pt-4">
           <button
             type="button"

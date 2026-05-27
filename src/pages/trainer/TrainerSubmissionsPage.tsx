@@ -15,7 +15,11 @@ export function TrainerSubmissionsPage() {
   const mySubmissions = useMemo(
     () =>
       forms
-        .filter((f) => f.trainerId === currentUser?.id)
+        .filter(
+          (f) =>
+            f.trainerId === currentUser?.id &&
+            ["Submitted", "Under Review", "Approved", "Needs Correction", "Rejected", "Completed"].includes(f.status)
+        )
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [forms, currentUser?.id]
   );

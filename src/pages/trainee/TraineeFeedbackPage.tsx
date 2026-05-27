@@ -148,12 +148,12 @@ export function TraineeFeedbackPage() {
 
                 const ok = submitTraineeFeedback({
                   formId,
-                  traineeName,
-                  employeeId,
-                  departmentRole,
+                  traineeName: traineeName.trim(),
+                  employeeId: employeeId.trim(),
+                  departmentRole: departmentRole.trim(),
                   feedbackDate,
                   averageScore: averageValue,
-                  comment: comments,
+                  comment: comments.trim(),
                   statementRatings: ratings
                 });
                 setSubmitted(ok);

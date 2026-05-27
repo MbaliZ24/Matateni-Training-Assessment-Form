@@ -124,23 +124,58 @@ function TextInput({
   );
 }
 
-function TextArea({ label, rows = 4 }: { label: string; rows?: number }) {
+function TextArea({
+  label,
+  rows = 4,
+  value,
+  onChange,
+  readOnly = false,
+  placeholder
+}: {
+  label: string;
+  rows?: number;
+  value?: string;
+  onChange?: (value: string) => void;
+  readOnly?: boolean;
+  placeholder?: string;
+}) {
   return (
     <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
       {label}
       <textarea
         title={label}
         rows={rows}
+        value={value}
+        readOnly={readOnly}
+        placeholder={placeholder}
+        onChange={(event) => onChange?.(event.target.value)}
         className="rounded-lg border border-brand-line bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100"
       />
     </label>
   );
 }
 
-function CheckboxLine({ label }: { label: string }) {
+function CheckboxLine({
+  label,
+  checked = false,
+  onChange,
+  disabled = false
+}: {
+  label: string;
+  checked?: boolean;
+  onChange?: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
     <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-      <input title={label} type="checkbox" className="size-4 rounded border-brand-line text-brand-ruby focus:ring-red-100" />
+      <input
+        title={label}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange?.(event.target.checked)}
+        className="size-4 rounded border-brand-line text-brand-ruby focus:ring-red-100"
+      />
       {label}
     </label>
   );
@@ -200,6 +235,7 @@ function SignaturePad({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isDrawingRef = useRef(false);
   const pointerIdRef = useRef<number | null>(null);
+  const [uploadedSignature, setUploadedSignature] = useState<string | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -256,6 +292,7 @@ function SignaturePad({
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
+    if (uploadedSignature) setUploadedSignature(null);
 
     event.preventDefault();
     canvas.setPointerCapture(event.pointerId);
@@ -296,12 +333,43 @@ function SignaturePad({
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
+    setUploadedSignature(null);
     onSignedChange?.(false);
+  };
+
+  const onUploadSignature = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (disabled) return;
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : null;
+      if (!result) return;
+
+      const canvas = canvasRef.current;
+      const context = canvas?.getContext("2d");
+      if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height);
+
+      setUploadedSignature(result);
+      onSignedChange?.(true);
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
     <div className="space-y-1">
       <p className="text-xs text-slate-500">{label}</p>
+      {uploadedSignature ? (
+        <div className="rounded-lg border border-brand-line bg-white p-2">
+          <img
+            src={uploadedSignature}
+            alt={`${label} uploaded signature`}
+            className="h-16 w-full rounded object-contain"
+          />
+        </div>
+      ) : null}
       <div ref={containerRef} className="rounded-lg border border-brand-line bg-white">
         <canvas
           title={label}
@@ -314,14 +382,26 @@ function SignaturePad({
           className={`h-16 w-full touch-none rounded-lg ${disabled ? "cursor-not-allowed opacity-70" : ""}`}
         />
       </div>
-      <button
-        type="button"
-        onClick={clearSignature}
-        disabled={disabled}
-        className="text-[11px] font-medium text-slate-500 transition hover:text-brand-ruby disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        Clear
-      </button>
+      <div className="flex items-center gap-3">
+        <label className="cursor-pointer text-[11px] font-medium text-slate-600 transition hover:text-brand-ruby">
+          Upload image
+          <input
+            type="file"
+            accept="image/*"
+            onChange={onUploadSignature}
+            disabled={disabled}
+            className="hidden"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={clearSignature}
+          disabled={disabled}
+          className="text-[11px] font-medium text-slate-500 transition hover:text-brand-ruby disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Clear
+        </button>
+      </div>
     </div>
   );
 }
@@ -348,6 +428,15 @@ type TrainerDraft = {
   numberOfTrainees: string;
   objectives: string[];
   observedImprovement: YesNo;
+  trainingFormats: string[];
+  targetUserGroup: string;
+  applicationExtent: string;
+  observedImprovementDetails: string;
+  supportNeeded: string;
+  barriersComment: string;
+  workedWellComment: string;
+  effectivenessRating: string;
+  recommendationChoice: string;
   trainerFutureSessionComment: string;
   supervisorFutureSessionComment: string;
   signatures: { trainer: boolean; supervisor: boolean };
@@ -385,6 +474,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   const [numberOfTrainees, setNumberOfTrainees] = useState(submittedData?.numberOfTrainees ?? "");
   const [objectives, setObjectives] = useState<string[]>(submittedData?.objectives?.length ? submittedData.objectives : [""]);
   const [observedImprovement, setObservedImprovement] = useState<YesNo>(submittedData?.observedImprovement ?? "");
+  const [trainingFormats, setTrainingFormats] = useState<string[]>(submittedData?.trainingFormats ?? []);
+  const [targetUserGroup, setTargetUserGroup] = useState(submittedData?.targetUserGroup ?? "");
+  const [applicationExtent, setApplicationExtent] = useState(submittedData?.applicationExtent ?? "");
+  const [observedImprovementDetails, setObservedImprovementDetails] = useState(submittedData?.observedImprovementDetails ?? "");
+  const [supportNeeded, setSupportNeeded] = useState(submittedData?.supportNeeded ?? "");
+  const [barriersComment, setBarriersComment] = useState(submittedData?.barriersComment ?? "");
+  const [workedWellComment, setWorkedWellComment] = useState(submittedData?.workedWellComment ?? "");
+  const [effectivenessRating, setEffectivenessRating] = useState(submittedData?.effectivenessRating ?? "");
+  const [recommendationChoice, setRecommendationChoice] = useState(submittedData?.recommendationChoice ?? "");
   const [trainerFutureSessionComment, setTrainerFutureSessionComment] = useState(submittedData?.trainerFutureSessionComment ?? "");
   const [supervisorFutureSessionComment, setSupervisorFutureSessionComment] = useState(submittedData?.supervisorFutureSessionComment ?? "");
   const [signOff, setSignOff] = useState({
@@ -434,6 +532,74 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     const passed = evaluated.filter((t) => t.understanding === "Yes" && t.independent === "Yes").length;
     return `${passed} / ${evaluated.length} trainees`;
   }, [trainees]);
+
+  const integrityLinkedFeedbackCount = useMemo(() => {
+    const targetId = distributedFormId ?? reviewFormId ?? null;
+    if (!targetId) return 0;
+    const form = forms.find((entry) => entry.id === targetId);
+    return form?.supervisorOnlyFeedback?.length ?? 0;
+  }, [forms, distributedFormId, reviewFormId]);
+
+  const submissionIntegrity = useMemo(() => {
+    const checks = [
+      {
+        key: "A",
+        label: "Section A · Training Information",
+        ok:
+          trainerName.trim().length > 0 &&
+          trainerDepartment.trim().length > 0 &&
+          trainingTitle.trim().length > 0 &&
+          trainingDate.trim().length > 0
+      },
+      {
+        key: "C",
+        label: "Section C · Trainee Feedback",
+        ok: integrityLinkedFeedbackCount > 0
+      },
+      {
+        key: "D",
+        label: "Section D · Skills & Follow-up",
+        ok:
+          trainees.some((t) => t.understanding !== "" || t.independent !== "") ||
+          applicationExtent.trim().length > 0 ||
+          supportNeeded.trim().length > 0 ||
+          barriersComment.trim().length > 0
+      },
+      {
+        key: "F",
+        label: "Section F · Reflection",
+        ok:
+          workedWellComment.trim().length > 0 ||
+          trainerFutureSessionComment.trim().length > 0 ||
+          supervisorFutureSessionComment.trim().length > 0
+      },
+      {
+        key: "G",
+        label: "Section G · Sign-off",
+        ok: signatures.trainer || signatures.supervisor
+      }
+    ] as const;
+
+    const missing = checks.filter((c) => !c.ok).map((c) => c.label);
+    return {
+      complete: missing.length === 0,
+      missing
+    };
+  }, [
+    trainerName,
+    trainerDepartment,
+    trainingTitle,
+    trainingDate,
+    integrityLinkedFeedbackCount,
+    trainees,
+    applicationExtent,
+    supportNeeded,
+    barriersComment,
+    workedWellComment,
+    trainerFutureSessionComment,
+    supervisorFutureSessionComment,
+    signatures
+  ]);
 
   const draftStorageKey = useMemo(() => {
     if (readOnly || userRole !== "trainer") return "";
@@ -557,6 +723,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       setNumberOfTrainees(parsed.numberOfTrainees ?? "");
       setObjectives(parsed.objectives?.length ? parsed.objectives : [""]);
       setObservedImprovement(parsed.observedImprovement ?? "");
+      setTrainingFormats(parsed.trainingFormats ?? []);
+      setTargetUserGroup(parsed.targetUserGroup ?? "");
+      setApplicationExtent(parsed.applicationExtent ?? "");
+      setObservedImprovementDetails(parsed.observedImprovementDetails ?? "");
+      setSupportNeeded(parsed.supportNeeded ?? "");
+      setBarriersComment(parsed.barriersComment ?? "");
+      setWorkedWellComment(parsed.workedWellComment ?? "");
+      setEffectivenessRating(parsed.effectivenessRating ?? "");
+      setRecommendationChoice(parsed.recommendationChoice ?? "");
       setTrainerFutureSessionComment(parsed.trainerFutureSessionComment ?? "");
       setSupervisorFutureSessionComment(parsed.supervisorFutureSessionComment ?? "");
       setSignatures(parsed.signatures ?? { trainer: false, supervisor: false });
@@ -592,6 +767,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         ) ||
         (parsed.trainerFutureSessionComment?.trim().length ?? 0) > 0 ||
         (parsed.supervisorFutureSessionComment?.trim().length ?? 0) > 0 ||
+        (parsed.targetUserGroup?.trim().length ?? 0) > 0 ||
+        (parsed.observedImprovementDetails?.trim().length ?? 0) > 0 ||
+        (parsed.barriersComment?.trim().length ?? 0) > 0 ||
+        (parsed.workedWellComment?.trim().length ?? 0) > 0 ||
+        (parsed.trainingFormats?.length ?? 0) > 0 ||
+        (parsed.applicationExtent?.trim().length ?? 0) > 0 ||
+        (parsed.supportNeeded?.trim().length ?? 0) > 0 ||
+        (parsed.effectivenessRating?.trim().length ?? 0) > 0 ||
+        (parsed.recommendationChoice?.trim().length ?? 0) > 0 ||
         parsed.signatures?.trainer === true ||
         parsed.signatures?.supervisor === true;
       setDraftRestored(hasMeaningfulDraft);
@@ -616,7 +800,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     const saved = linkedForm.submittedData;
     setDistributedFormId(linkedForm.id);
     setTrainerName(saved.trainerName ?? "");
-    setTrainerDepartment(linkedForm.department ?? "");
+    setTrainerDepartment(saved.trainerDepartment ?? linkedForm.department ?? "");
     setTrainingTitle(saved.trainingTitle ?? "");
     setTrainingDate(saved.trainingDate ?? "");
     setTrainingDurationDays(saved.durationDays ?? "");
@@ -624,6 +808,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     setNumberOfTrainees(saved.numberOfTrainees ?? "");
     setObjectives(saved.objectives?.length ? saved.objectives : [""]);
     setObservedImprovement(saved.observedImprovement ?? "");
+    setTrainingFormats(saved.trainingFormats ?? []);
+    setTargetUserGroup(saved.targetUserGroup ?? "");
+    setApplicationExtent(saved.applicationExtent ?? "");
+    setObservedImprovementDetails(saved.observedImprovementDetails ?? "");
+    setSupportNeeded(saved.supportNeeded ?? "");
+    setBarriersComment(saved.barriersComment ?? "");
+    setWorkedWellComment(saved.workedWellComment ?? "");
+    setEffectivenessRating(saved.effectivenessRating ?? "");
+    setRecommendationChoice(saved.recommendationChoice ?? "");
     setTrainerFutureSessionComment(saved.trainerFutureSessionComment ?? "");
     setSupervisorFutureSessionComment(saved.supervisorFutureSessionComment ?? "");
     setTrainees(saved.trainees?.length ? saved.trainees : [createEmptyTrainee()]);
@@ -652,6 +845,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       numberOfTrainees,
       objectives,
       observedImprovement,
+      trainingFormats,
+      targetUserGroup,
+      applicationExtent,
+      observedImprovementDetails,
+      supportNeeded,
+      barriersComment,
+      workedWellComment,
+      effectivenessRating,
+      recommendationChoice,
       trainerFutureSessionComment,
       supervisorFutureSessionComment,
       signatures,
@@ -671,6 +873,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       numberOfTrainees.trim().length > 0 ||
       objectives.some((objective) => objective.trim().length > 0) ||
       observedImprovement !== "" ||
+      trainingFormats.length > 0 ||
+      targetUserGroup.trim().length > 0 ||
+      applicationExtent.trim().length > 0 ||
+      observedImprovementDetails.trim().length > 0 ||
+      supportNeeded.trim().length > 0 ||
+      barriersComment.trim().length > 0 ||
+      workedWellComment.trim().length > 0 ||
+      effectivenessRating.trim().length > 0 ||
+      recommendationChoice.trim().length > 0 ||
       ratings.some((score) => score !== null) ||
       traineeRoster.some(
         (row) => row.name.trim().length > 0 || row.departmentOrRole.trim().length > 0 || row.attendance !== ""
@@ -706,6 +917,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     numberOfTrainees,
     objectives,
     observedImprovement,
+    trainingFormats,
+    targetUserGroup,
+    applicationExtent,
+    observedImprovementDetails,
+    supportNeeded,
+    barriersComment,
+    workedWellComment,
+    effectivenessRating,
+    recommendationChoice,
     trainerFutureSessionComment,
     supervisorFutureSessionComment,
     signatures,
@@ -749,6 +969,19 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     if (!numberOfTrainees && submittedFeedback.length > 0) {
       setNumberOfTrainees(String(submittedFeedback.length));
     }
+
+    // Keep Skills & Follow-up trainee names aligned with the actual names
+    // submitted by trainees in the feedback form.
+    setTrainees((prev) => {
+      const targetLength = Math.max(prev.length, submittedFeedback.length);
+      const next = Array.from({ length: targetLength }, (_, index) => {
+        const existing = prev[index] ?? createEmptyTrainee();
+        const feedbackName = submittedFeedback[index]?.traineeName?.trim() ?? "";
+        if (!feedbackName) return existing;
+        return { ...existing, name: feedbackName };
+      });
+      return next;
+    });
   }, [userRole, linkedForm, numberOfTrainees]);
 
   const updateObjective = (index: number, value: string) => {
@@ -756,6 +989,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       const next = [...prev];
       next[index] = value;
       return next;
+    });
+  };
+
+  const toggleTrainingFormat = (value: string, checked: boolean) => {
+    setTrainingFormats((prev) => {
+      if (checked) return Array.from(new Set([...prev, value]));
+      return prev.filter((item) => item !== value);
     });
   };
 
@@ -845,8 +1085,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         trainees: Number(numberOfTrainees) || traineeRoster.length || 0,
         feedbackResponses: 0,
         averageScore: 0,
-        status: "Waiting for Feedback",
-        recommendation: "Pending supervisor review",
+        status: "Draft",
+        recommendation: "Draft in progress",
         createdAt: new Date().toISOString().slice(0, 10),
         submittedData: {
           trainerName,
@@ -860,6 +1100,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           passRate: autoPassRate || "-",
           averageScoreDisplay: autoAverageScore || "-",
           observedImprovement,
+          trainingFormats,
+          targetUserGroup,
+          applicationExtent,
+          observedImprovementDetails,
+          supportNeeded,
+          barriersComment,
+          workedWellComment,
+          effectivenessRating,
+          recommendationChoice,
           trainerFutureSessionComment,
           supervisorFutureSessionComment,
           trainees,
@@ -928,8 +1177,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           existingForm && existingForm.feedbackResponses > 0
             ? existingForm.averageScore
             : computedAverageScore,
-        status:
-          (existingForm?.feedbackResponses ?? 0) > 0 ? "Submitted" : "Waiting for Feedback",
+        // Once trainer submits, it becomes an actual submission.
+        status: "Submitted",
         recommendation: "Pending supervisor review",
         createdAt: existingForm?.createdAt ?? new Date().toISOString().slice(0, 10),
         submittedData: {
@@ -944,6 +1193,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           passRate: autoPassRate || "-",
           averageScoreDisplay: autoAverageScore || "-",
           observedImprovement,
+          trainingFormats,
+          targetUserGroup,
+          applicationExtent,
+          observedImprovementDetails,
+          supportNeeded,
+          barriersComment,
+          workedWellComment,
+          effectivenessRating,
+          recommendationChoice,
           trainerFutureSessionComment,
           supervisorFutureSessionComment,
           trainees,
@@ -972,6 +1230,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       setNumberOfTrainees("");
       setObjectives([""]);
       setObservedImprovement("");
+      setTrainingFormats([]);
+      setTargetUserGroup("");
+      setApplicationExtent("");
+      setObservedImprovementDetails("");
+      setSupportNeeded("");
+      setBarriersComment("");
+      setWorkedWellComment("");
+      setEffectivenessRating("");
+      setRecommendationChoice("");
       setTrainerFutureSessionComment("");
       setSupervisorFutureSessionComment("");
       setRatings(Array(feedbackStatements.length).fill(null));
@@ -1080,8 +1347,33 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         </header>
 
         {isSupervisorReviewMode ? (
-          <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-panel">
-            Supervisor review mode: trainer-submitted sections are shown for assessment and approval.
+          <div className="mb-5 space-y-3">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-panel">
+              Supervisor review mode: trainer-submitted sections are shown for assessment and approval.
+            </div>
+            <div
+              className={`rounded-xl border px-4 py-3 text-sm shadow-panel ${
+                submissionIntegrity.complete
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-rose-200 bg-rose-50 text-rose-800"
+              }`}
+            >
+              <p className="font-semibold">
+                Submission Integrity Check: {submissionIntegrity.complete ? "Complete" : "Incomplete"}
+              </p>
+              {submissionIntegrity.complete ? (
+                <p className="mt-1 text-xs">All required sections (A/C/D/F/G) have captured data.</p>
+              ) : (
+                <div className="mt-1">
+                  <p className="text-xs">Missing or empty sections:</p>
+                  <ul className="mt-1 list-disc pl-4 text-xs">
+                    {submissionIntegrity.missing.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
 
@@ -1196,12 +1488,23 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 <p className="mb-2 text-sm font-medium text-slate-700">Training Format</p>
                 <div className="flex flex-wrap gap-4">
                   {["Classroom", "Virtual", "Workplace-based", "Mobile", "Blended/Hybrid"].map((item) => (
-                    <CheckboxLine key={item} label={item} />
+                    <CheckboxLine
+                      key={item}
+                      label={item}
+                      checked={trainingFormats.includes(item)}
+                      disabled={isSupervisorReviewMode}
+                      onChange={(checked) => toggleTrainingFormat(item, checked)}
+                    />
                   ))}
                 </div>
               </div>
               <div className="md:col-span-2">
-                <TextInput label="Target User Group (e.g., system users, operators, managers)" />
+                <TextInput
+                  label="Target User Group (e.g., system users, operators, managers)"
+                  value={targetUserGroup}
+                  onChange={setTargetUserGroup}
+                  readOnly={isSupervisorReviewMode}
+                />
               </div>
 
               {!isSupervisorReviewMode ? (
@@ -1477,16 +1780,37 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-sm font-semibold text-slate-900">
-                            {entry.traineeName || "Anonymous trainee"}
+                            {entry.traineeName?.trim() ? entry.traineeName.trim() : "Anonymous trainee"}
                           </p>
                           <p className="text-xs text-slate-500">{entry.feedbackDate || "No date"}</p>
                         </div>
                         <p className="mt-0.5 text-xs text-slate-500">
-                          {entry.employeeId || "No employee ID"} • {entry.departmentRole || "No department/role"}
+                          {entry.employeeId?.trim() ? entry.employeeId.trim() : "No employee ID"} • {entry.departmentRole?.trim() ? entry.departmentRole.trim() : "No department/role"}
                         </p>
                         <p className="mt-2 text-sm text-slate-700">
-                          {entry.comment?.trim().length ? entry.comment : "No comment provided."}
+                          {entry.comment?.trim().length ? entry.comment.trim() : "No comment provided."}
                         </p>
+                        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2.5">
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            Full Statement Ratings
+                          </p>
+                          <div className="space-y-1.5">
+                            {feedbackStatements.map((statement, statementIndex) => {
+                              const ratingValue = entry.statementRatings?.[statementIndex];
+                              return (
+                                <div
+                                  key={`${entry.traineeName || "trainee"}-${statementIndex}`}
+                                  className="flex items-start justify-between gap-3"
+                                >
+                                  <p className="text-xs text-slate-700">{statement}</p>
+                                  <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-800">
+                                    {typeof ratingValue === "number" ? `${ratingValue}/5` : "N/A"}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                         <p className="mt-2 text-xs font-semibold text-slate-600">
                           Score: {entry.averageScore?.toFixed?.(1) ?? entry.averageScore ?? 0} / 5
                         </p>
@@ -1704,7 +2028,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 <p className="mb-2 text-sm font-medium text-slate-700">To what extent have trainees applied the skills in the workplace?</p>
                 <div className="flex flex-wrap gap-4">
                   {["Not at all", "Minimally", "Moderately", "Largely", "Fully"].map((item) => (
-                    <CheckboxLine key={item} label={item} />
+                    <CheckboxLine
+                      key={item}
+                      label={item}
+                      checked={applicationExtent === item}
+                      disabled={isSupervisorReviewMode}
+                      onChange={(checked) => setApplicationExtent(checked ? item : "")}
+                    />
                   ))}
                 </div>
               </div>
@@ -1736,7 +2066,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                   </label>
                 </div>
                 {observedImprovement === "Yes" ? (
-                  <TextArea label="If yes, please describe briefly" rows={3} />
+                  <TextArea
+                    label="If yes, please describe briefly"
+                    rows={3}
+                    value={observedImprovementDetails}
+                    onChange={setObservedImprovementDetails}
+                    readOnly={isSupervisorReviewMode}
+                  />
                 ) : null}
               </div>
 
@@ -1744,12 +2080,24 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 <p className="mb-2 text-sm font-medium text-slate-700">Additional support or refresher training needed?</p>
                 <div className="flex flex-wrap gap-4">
                   {["None", "Minimal", "Significant", "Full retraining required"].map((item) => (
-                    <CheckboxLine key={item} label={item} />
+                    <CheckboxLine
+                      key={item}
+                      label={item}
+                      checked={supportNeeded === item}
+                      disabled={isSupervisorReviewMode}
+                      onChange={(checked) => setSupportNeeded(checked ? item : "")}
+                    />
                   ))}
                 </div>
               </div>
 
-              <TextArea label="Comments / barriers to application (e.g., time, resources, supervision)" rows={4} />
+              <TextArea
+                label="Comments / barriers to application (e.g., time, resources, supervision)"
+                rows={4}
+                value={barriersComment}
+                onChange={setBarriersComment}
+                readOnly={isSupervisorReviewMode}
+              />
             </div>
           </Card>
           ) : null}
@@ -1757,7 +2105,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           {activeSection === "F" && visibleSections.includes("F") ? (
           <Card section="F" title="Overall Trainer Reflection & Improvement" owner="Trainer" disabled={false}>
             <div className="space-y-4">
-              <TextArea label="What worked well in this training?" rows={3} />
+              <TextArea
+                label="What worked well in this training?"
+                rows={3}
+                value={workedWellComment}
+                onChange={setWorkedWellComment}
+                readOnly={isSupervisorReviewMode}
+              />
               <div className="space-y-3">
                 <p className="text-sm font-medium text-slate-700">What would you change for future sessions?</p>
                 <label className="block text-sm font-medium text-slate-700">
@@ -1791,7 +2145,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 <p className="mb-2 text-sm font-medium text-slate-700">Training effectiveness rating (overall)</p>
                 <div className="flex flex-wrap gap-4">
                   {["Poor", "Fair", "Good", "Very Good", "Excellent"].map((item) => (
-                    <CheckboxLine key={item} label={item} />
+                    <CheckboxLine
+                      key={item}
+                      label={item}
+                      checked={effectivenessRating === item}
+                      disabled={isSupervisorReviewMode}
+                      onChange={(checked) => setEffectivenessRating(checked ? item : "")}
+                    />
                   ))}
                 </div>
               </div>
@@ -1799,7 +2159,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 <p className="mb-2 text-sm font-medium text-slate-700">Recommendation</p>
                 <div className="flex flex-wrap gap-4">
                   {["Proceed as is", "Minor adjustments needed", "Major revision required"].map((item) => (
-                    <CheckboxLine key={item} label={item} />
+                    <CheckboxLine
+                      key={item}
+                      label={item}
+                      checked={recommendationChoice === item}
+                      disabled={isSupervisorReviewMode}
+                      onChange={(checked) => setRecommendationChoice(checked ? item : "")}
+                    />
                   ))}
                 </div>
               </div>
