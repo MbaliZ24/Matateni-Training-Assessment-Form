@@ -350,6 +350,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   const addForm = useAppStore((s) => s.addForm);
   const updateFormStatus = useAppStore((s) => s.updateFormStatus);
   const forms = useAppStore((s) => s.forms);
+  const users = useAppStore((s) => s.users);
   const currentUser = useAppStore((s) => s.currentUser);
   const sections = sectionKeys;
   type UserRole = "trainer" | "trainee" | "supervisor";
@@ -460,6 +461,12 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     [forms, effectiveDistributedFormId]
   );
 
+  const assignedSupervisor = useMemo(() => {
+    const assignedId = currentUser?.supervisorId;
+    if (!assignedId) return undefined;
+    return users.find((u) => u.id === assignedId && u.role === "supervisor");
+  }, [currentUser?.supervisorId, users]);
+
   useEffect(() => {
     if (!distributedFormId && effectiveDistributedFormId) {
       setDistributedFormId(effectiveDistributedFormId);
@@ -488,8 +495,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
 
     try {
       const parsed = JSON.parse(rawDraft) as TrainerDraft;
+      const legacyMockNames = new Set(["Nandi Dlamini", "Sipho Mokoena", "Thabo Nkosi"]);
+      const sanitizedTrainerName =
+        parsed.trainerName && legacyMockNames.has(parsed.trainerName)
+          ? currentUser?.name ?? ""
+          : (parsed.trainerName ?? "");
       setDistributedFormId(parsed.distributedFormId ?? null);
-      setTrainerName(parsed.trainerName ?? "");
+      setTrainerName(sanitizedTrainerName);
       setTrainerDepartment(parsed.trainerDepartment ?? "");
       setTrainingTitle(parsed.trainingTitle ?? "");
       setTrainingDate(parsed.trainingDate ?? "");
@@ -512,7 +524,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     } catch {
       localStorage.removeItem(draftStorageKey);
     }
-  }, [draftStorageKey, sections]);
+  }, [draftStorageKey, sections, currentUser?.name]);
 
   useEffect(() => {
     if (!draftStorageKey) return;
@@ -678,6 +690,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         id: formId,
         title: trainingTitle || "Training Assessment",
         trainerId: currentUser?.id ?? "u1",
+        assignedSupervisorId: currentUser?.supervisorId,
         department: trainerDepartment || currentUser?.department || "Operations",
         date: trainingDate || new Date().toISOString().slice(0, 10),
         trainees: Number(numberOfTrainees) || traineeRoster.length || 0,
@@ -724,6 +737,16 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     }
 
     if (userRole === "trainer") {
+      if (!currentUser?.supervisorId) {
+        setSubmitModal({
+          open: true,
+          kind: "error",
+          title: "Supervisor Not Assigned",
+          message: "Your profile has no assigned supervisor. Please contact admin before submitting."
+        });
+        return;
+      }
+
       const newFormId = distributedFormId ?? `F-${Date.now()}`;
       const existingForm = forms.find((form) => form.id === newFormId);
       const computedAverageScore = Number(
@@ -740,6 +763,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         id: newFormId,
         title: trainingTitle || "Training Assessment",
         trainerId: currentUser?.id ?? "u1",
+        assignedSupervisorId: existingForm?.assignedSupervisorId ?? currentUser.supervisorId,
         department: trainerDepartment || currentUser?.department || "Operations",
         date: trainingDate || new Date().toISOString().slice(0, 10),
         trainees: Number(numberOfTrainees) || traineeRoster.length || 0,
@@ -771,7 +795,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         open: true,
         kind: "success",
         title: "Submitted To Supervisor",
-        message: `Trainer response submitted. Trainee link: /trainee-feedback?formId=${newFormId}`
+        message: `Submitted successfully. This form was sent to ${assignedSupervisor?.name || assignedSupervisor?.email || "your assigned supervisor"}. Trainee link: /trainee-feedback?formId=${newFormId}`
       });
       if (draftStorageKey) {
         localStorage.removeItem(draftStorageKey);

@@ -18,12 +18,14 @@ export type User = {
   password: string;
   role: Role;
   department: string;
+  supervisorId?: string;
 };
 
 export type TrainingForm = {
   id: string;
   title: string;
   trainerId: string;
+  assignedSupervisorId?: string;
   department: string;
   date: string;
   trainees: number;

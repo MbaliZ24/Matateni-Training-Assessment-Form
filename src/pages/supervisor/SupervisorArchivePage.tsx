@@ -21,14 +21,19 @@ function statusLabel(status: string) {
 export function SupervisorArchivePage() {
   const navigate = useNavigate();
   const forms = useAppStore((s) => s.forms);
+  const currentUser = useAppStore((s) => s.currentUser);
   const setSelectedReviewFormId = useAppStore((s) => s.setSelectedReviewFormId);
 
   const rows = useMemo(
     () =>
       forms
-        .filter((f) => ["Submitted", "Under Review", "Approved", "Needs Correction", "Rejected"].includes(f.status))
+        .filter(
+          (f) =>
+            f.assignedSupervisorId === currentUser?.id &&
+            ["Submitted", "Under Review", "Approved", "Needs Correction", "Rejected"].includes(f.status)
+        )
         .sort((a, b) => b.date.localeCompare(a.date)),
-    [forms]
+    [forms, currentUser?.id]
   );
 
   return (

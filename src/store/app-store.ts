@@ -1,53 +1,17 @@
-﻿// Lightweight demo state store (mock auth + mock form workflow) for frontend-only behavior.
+// App state store for auth + assessment workflow.
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { NotificationItem, Role, TrainingForm, User } from "../types";
 
 const users: User[] = [
-  { id: "u1", name: "Nandi Dlamini", email: "trainer@matateni.com", password: "demo123", role: "trainer", department: "Operations" },
-  { id: "u2", name: "Sipho Mokoena", email: "supervisor@matateni.com", password: "demo123", role: "supervisor", department: "Operations" },
-  { id: "u3", name: "Thabo Nkosi", email: "admin@matateni.com", password: "demo123", role: "admin", department: "People Ops" }
+  { id: "u1", name: "", email: "trainer@matateni.com", password: "demo123", role: "trainer", department: "Operations", supervisorId: "u2" },
+  { id: "u2", name: "", email: "supervisor@matateni.com", password: "demo123", role: "supervisor", department: "Operations" },
+  { id: "u3", name: "", email: "admin@matateni.com", password: "demo123", role: "admin", department: "People Ops" }
 ];
 
-const forms: TrainingForm[] = [
-  { id: "F-1021", title: "SAP Inventory Basics", trainerId: "u1", department: "Operations", date: "2026-05-20", trainees: 18, feedbackResponses: 14, averageScore: 4.2, status: "Waiting for Feedback", recommendation: "Proceed", createdAt: "2026-05-20" },
-  {
-    id: "F-1022",
-    title: "Safety Incident Reporting",
-    trainerId: "u1",
-    department: "Safety",
-    date: "2026-05-18",
-    trainees: 12,
-    feedbackResponses: 12,
-    averageScore: 4.6,
-    status: "Needs Correction",
-    recommendation: "Proceed",
-    createdAt: "2026-05-18",
-    supervisorReview: {
-      decision: "Needs Changes",
-      comments: "Good coverage, but add more practical incident examples in Section C and improve clarity in final reflection.",
-      actionItems: ["Add 2 practical examples to Section C", "Update reflection to include measurable outcomes"],
-      dueDate: "2026-05-30",
-      sectionFeedback: [
-        { section: "C: Feedback", verdict: "Revise", comment: "Include practical examples for trainees." },
-        { section: "D/E: Skills & Follow-up", verdict: "OK", comment: "Looks fine." },
-        { section: "F: Reflection", verdict: "Revise", comment: "Be more specific with improvements." }
-      ],
-      stage: "submitted",
-      submittedAt: "2026-05-25T10:00:00.000Z",
-      submittedBy: "Sipho Mokoena",
-      updatedAt: "2026-05-25T10:00:00.000Z"
-    }
-  },
-  { id: "F-1023", title: "Shift Handover Protocol", trainerId: "u1", department: "Operations", date: "2026-05-14", trainees: 10, feedbackResponses: 9, averageScore: 3.8, status: "Needs Correction", recommendation: "Adjust examples", createdAt: "2026-05-14" },
-  { id: "F-1024", title: "Warehouse Compliance", trainerId: "u1", department: "Compliance", date: "2026-05-12", trainees: 22, feedbackResponses: 22, averageScore: 4.5, status: "Approved", recommendation: "Scale", createdAt: "2026-05-12" }
-];
+const forms: TrainingForm[] = [];
 
-const notifications: NotificationItem[] = [
-  { id: "n1", title: "New review queued", body: "Form F-1022 is awaiting supervisor review.", time: "2m", read: false },
-  { id: "n2", title: "Feedback threshold met", body: "SAP Inventory Basics reached 75% feedback responses.", time: "18m", read: false },
-  { id: "n3", title: "Policy update", body: "Compliance template v3 is now active.", time: "1h", read: true }
-];
+const notifications: NotificationItem[] = [];
 
 type AppState = {
   users: User[];
@@ -223,7 +187,28 @@ export const useAppStore = create<AppState>()(
       }
     }),
     {
-      name: "matateni-app-store"
+      name: "matateni-app-store-v4",
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState ?? {}) as Partial<AppState>;
+        const persistedForms = Array.isArray(persisted.forms) ? persisted.forms : currentState.forms;
+        const migratedForms = persistedForms.map((form) => {
+          if (form.assignedSupervisorId) return form;
+          const trainer = users.find((u) => u.id === form.trainerId);
+          return {
+            ...form,
+            assignedSupervisorId: trainer?.supervisorId
+          };
+        });
+        return {
+          ...currentState,
+          ...persisted,
+          forms: migratedForms,
+          // Always use source-of-truth mock users from code, not stale persisted users.
+          users,
+          // Force fresh login each run so stale currentUser profiles don't leak old names.
+          currentUser: null
+        };
+      }
     }
   )
 );
@@ -233,5 +218,7 @@ export function dashboardRouteByRole(role: Role) {
   if (role === "supervisor") return "/supervisor";
   return "/admin";
 }
+
+
 
 

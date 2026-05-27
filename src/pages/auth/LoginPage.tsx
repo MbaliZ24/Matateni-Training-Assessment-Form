@@ -1,4 +1,4 @@
-﻿// Branded split-screen login experience for trainer, supervisor, and admin demo access.
+// Branded split-screen login experience for trainer, supervisor, and admin access.
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -9,8 +9,8 @@ import { useAppStore, dashboardRouteByRole } from "../../store/app-store";
 export function LoginPage() {
   const navigate = useNavigate();
   const login = useAppStore((s) => s.login);
-  const [email, setEmail] = useState("trainer@matateni.com");
-  const [password, setPassword] = useState("demo123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
   return (
@@ -71,5 +71,6 @@ export function LoginPage() {
     </main>
   );
 }
+
 
 
