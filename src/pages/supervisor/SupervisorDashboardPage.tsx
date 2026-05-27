@@ -344,7 +344,7 @@ export function SupervisorDashboardPage() {
                   role="menuitem"
                   className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                   onClick={() => {
-                    exportSignedFormPdf(target, { includeTraineeComments: false });
+                    exportSignedFormPdf(target, { includeTraineeComments: true });
                     closeMenu();
                   }}
                 >

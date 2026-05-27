@@ -44,6 +44,10 @@ function createEmptyRosterItem(): TraineeRosterItem {
   };
 }
 
+function normalizeTraineeKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function Card({
   section,
   title,
@@ -145,19 +149,22 @@ function CheckboxLine({ label }: { label: string }) {
 function YesNoGroup({
   name,
   value,
-  onChange
+  onChange,
+  disabled = false
 }: {
   name: string;
   value: YesNo;
   onChange: (value: YesNo) => void;
+  disabled?: boolean;
 }) {
   return (
-    <div className="inline-flex gap-3">
+    <div className={`inline-flex gap-3 ${disabled ? "opacity-60" : ""}`}>
       <label className="inline-flex items-center gap-1.5 text-sm text-slate-700">
         <input
           type="radio"
           title={`${name}-Yes`}
           name={name}
+          disabled={disabled}
           checked={value === "Yes"}
           onChange={() => onChange("Yes")}
           className="accent-brand-ruby"
@@ -169,6 +176,7 @@ function YesNoGroup({
           type="radio"
           title={`${name}-No`}
           name={name}
+          disabled={disabled}
           checked={value === "No"}
           onChange={() => onChange("No")}
           className="accent-brand-ruby"
@@ -340,6 +348,15 @@ type TrainerDraft = {
   numberOfTrainees: string;
   objectives: string[];
   observedImprovement: YesNo;
+  trainerFutureSessionComment: string;
+  supervisorFutureSessionComment: string;
+  signatures: { trainer: boolean; supervisor: boolean };
+  signOff: {
+    trainerName: string;
+    trainerDate: string;
+    supervisorName: string;
+    supervisorDate: string;
+  };
   ratings: (number | null)[];
   traineeRoster: TraineeRosterItem[];
   trainees: TraineeEval[];
@@ -360,19 +377,25 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   const [distributedFormId, setDistributedFormId] = useState<string | null>(null);
 
   const [trainerName, setTrainerName] = useState(submittedData?.trainerName ?? currentUser?.name ?? "");
-  const [trainerDepartment, setTrainerDepartment] = useState(currentUser?.department ?? "");
+  const [trainerDepartment, setTrainerDepartment] = useState(submittedData?.trainerDepartment ?? currentUser?.department ?? "");
   const [trainingTitle, setTrainingTitle] = useState(submittedData?.trainingTitle ?? "");
   const [trainingDate, setTrainingDate] = useState(submittedData?.trainingDate ?? "");
   const [trainingDurationDays, setTrainingDurationDays] = useState(submittedData?.durationDays ?? "");
   const [trainingDurationHours, setTrainingDurationHours] = useState(submittedData?.durationHours ?? "");
   const [numberOfTrainees, setNumberOfTrainees] = useState(submittedData?.numberOfTrainees ?? "");
   const [objectives, setObjectives] = useState<string[]>(submittedData?.objectives?.length ? submittedData.objectives : [""]);
-  const [observedImprovement, setObservedImprovement] = useState<YesNo>("");
-  const [trainerFutureSessionComment, setTrainerFutureSessionComment] = useState("");
-  const [supervisorFutureSessionComment, setSupervisorFutureSessionComment] = useState("");
+  const [observedImprovement, setObservedImprovement] = useState<YesNo>(submittedData?.observedImprovement ?? "");
+  const [trainerFutureSessionComment, setTrainerFutureSessionComment] = useState(submittedData?.trainerFutureSessionComment ?? "");
+  const [supervisorFutureSessionComment, setSupervisorFutureSessionComment] = useState(submittedData?.supervisorFutureSessionComment ?? "");
+  const [signOff, setSignOff] = useState({
+    trainerName: submittedData?.signOff?.trainerName ?? currentUser?.name ?? "",
+    trainerDate: submittedData?.signOff?.trainerDate ?? "",
+    supervisorName: submittedData?.signOff?.supervisorName ?? "",
+    supervisorDate: submittedData?.signOff?.supervisorDate ?? ""
+  });
   const [signatures, setSignatures] = useState({
-    trainer: false,
-    supervisor: false
+    trainer: submittedData?.signatures?.trainer ?? false,
+    supervisor: submittedData?.signatures?.supervisor ?? false
   });
   const [submitModal, setSubmitModal] = useState<{
     open: boolean;
@@ -391,8 +414,12 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     submittedData?.traineeRoster?.length ? submittedData.traineeRoster : [createEmptyRosterItem()]
   );
 
-  const [trainees, setTrainees] = useState<TraineeEval[]>([createEmptyTrainee()]);
+  const [trainees, setTrainees] = useState<TraineeEval[]>(
+    submittedData?.trainees?.length ? submittedData.trainees : [createEmptyTrainee()]
+  );
   const [draftRestored, setDraftRestored] = useState(false);
+  const [showDraftToast, setShowDraftToast] = useState(false);
+  const [rehydratedFromLinkedForm, setRehydratedFromLinkedForm] = useState(false);
 
   const autoAverageScore = useMemo(() => {
     const selected = ratings.filter((score): score is number => score !== null);
@@ -433,11 +460,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   const effectiveDistributedFormId = useMemo(() => {
     if (distributedFormId) return distributedFormId;
     if (reviewFormId) return reviewFormId;
-    const fallbackForm = forms
-      .filter((form) => form.trainerId === (currentUser?.id ?? ""))
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-    return fallbackForm?.id ?? null;
-  }, [distributedFormId, reviewFormId, forms, currentUser?.id]);
+    return null;
+  }, [distributedFormId, reviewFormId]);
 
   const traineeFeedbackLink = useMemo(() => {
     if (!effectiveDistributedFormId) return "";
@@ -460,6 +484,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         : undefined,
     [forms, effectiveDistributedFormId]
   );
+
+  const submittedTraineeNameSet = useMemo(() => {
+    const names = (linkedForm?.supervisorOnlyFeedback ?? [])
+      .map((entry) => normalizeTraineeKey(entry.traineeName || ""))
+      .filter((name) => name.length > 0);
+    return new Set(names);
+  }, [linkedForm]);
 
   const assignedSupervisor = useMemo(() => {
     const assignedId = currentUser?.supervisorId;
@@ -489,6 +520,22 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   }, [numberOfTrainees]);
 
   useEffect(() => {
+    if (userRole !== "trainer") return;
+    if (!traineeRoster.length) return;
+
+    setTrainees((prev) => {
+      const targetLength = Math.max(prev.length, traineeRoster.length);
+      const next = Array.from({ length: targetLength }, (_, index) => {
+        const existing = prev[index] ?? createEmptyTrainee();
+        const rosterName = traineeRoster[index]?.name?.trim() ?? "";
+        if (!rosterName) return existing;
+        return { ...existing, name: rosterName };
+      });
+      return next;
+    });
+  }, [userRole, traineeRoster]);
+
+  useEffect(() => {
     if (!draftStorageKey) return;
     const rawDraft = localStorage.getItem(draftStorageKey);
     if (!rawDraft) return;
@@ -510,6 +557,17 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       setNumberOfTrainees(parsed.numberOfTrainees ?? "");
       setObjectives(parsed.objectives?.length ? parsed.objectives : [""]);
       setObservedImprovement(parsed.observedImprovement ?? "");
+      setTrainerFutureSessionComment(parsed.trainerFutureSessionComment ?? "");
+      setSupervisorFutureSessionComment(parsed.supervisorFutureSessionComment ?? "");
+      setSignatures(parsed.signatures ?? { trainer: false, supervisor: false });
+      setSignOff(
+        parsed.signOff ?? {
+          trainerName: currentUser?.name ?? "",
+          trainerDate: "",
+          supervisorName: "",
+          supervisorDate: ""
+        }
+      );
       setRatings(
         Array.isArray(parsed.ratings) && parsed.ratings.length === feedbackStatements.length
           ? parsed.ratings
@@ -520,11 +578,65 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       if (sections.includes(parsed.activeSection)) {
         setActiveSection(parsed.activeSection);
       }
-      setDraftRestored(true);
+      const hasMeaningfulDraft =
+        (parsed.trainingTitle?.trim().length ?? 0) > 0 ||
+        (parsed.trainerName?.trim().length ?? 0) > 0 ||
+        (parsed.trainingDate?.trim().length ?? 0) > 0 ||
+        (parsed.objectives ?? []).some((objective) => objective.trim().length > 0) ||
+        (parsed.traineeRoster ?? []).some(
+          (row) => row.name.trim().length > 0 || row.departmentOrRole.trim().length > 0 || row.attendance !== ""
+        ) ||
+        (parsed.ratings ?? []).some((score) => score !== null) ||
+        (parsed.trainees ?? []).some(
+          (row) => row.name.trim().length > 0 || row.understanding !== "" || row.independent !== ""
+        ) ||
+        (parsed.trainerFutureSessionComment?.trim().length ?? 0) > 0 ||
+        (parsed.supervisorFutureSessionComment?.trim().length ?? 0) > 0 ||
+        parsed.signatures?.trainer === true ||
+        parsed.signatures?.supervisor === true;
+      setDraftRestored(hasMeaningfulDraft);
     } catch {
       localStorage.removeItem(draftStorageKey);
     }
   }, [draftStorageKey, sections, currentUser?.name]);
+
+  useEffect(() => {
+    if (!draftRestored) return;
+    setShowDraftToast(true);
+    const timer = window.setTimeout(() => setShowDraftToast(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [draftRestored]);
+
+  useEffect(() => {
+    if (userRole !== "trainer") return;
+    if (rehydratedFromLinkedForm) return;
+    if (draftRestored) return;
+    if (!linkedForm?.submittedData) return;
+
+    const saved = linkedForm.submittedData;
+    setDistributedFormId(linkedForm.id);
+    setTrainerName(saved.trainerName ?? "");
+    setTrainerDepartment(linkedForm.department ?? "");
+    setTrainingTitle(saved.trainingTitle ?? "");
+    setTrainingDate(saved.trainingDate ?? "");
+    setTrainingDurationDays(saved.durationDays ?? "");
+    setTrainingDurationHours(saved.durationHours ?? "");
+    setNumberOfTrainees(saved.numberOfTrainees ?? "");
+    setObjectives(saved.objectives?.length ? saved.objectives : [""]);
+    setObservedImprovement(saved.observedImprovement ?? "");
+    setTrainerFutureSessionComment(saved.trainerFutureSessionComment ?? "");
+    setSupervisorFutureSessionComment(saved.supervisorFutureSessionComment ?? "");
+    setTrainees(saved.trainees?.length ? saved.trainees : [createEmptyTrainee()]);
+    setSignatures(saved.signatures ?? { trainer: false, supervisor: false });
+    setSignOff({
+      trainerName: saved.signOff?.trainerName ?? currentUser?.name ?? "",
+      trainerDate: saved.signOff?.trainerDate ?? "",
+      supervisorName: saved.signOff?.supervisorName ?? "",
+      supervisorDate: saved.signOff?.supervisorDate ?? ""
+    });
+    setTraineeRoster(saved.traineeRoster?.length ? saved.traineeRoster : [createEmptyRosterItem()]);
+    setRehydratedFromLinkedForm(true);
+  }, [userRole, rehydratedFromLinkedForm, draftRestored, linkedForm, currentUser?.name]);
 
   useEffect(() => {
     if (!draftStorageKey) return;
@@ -540,11 +652,45 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       numberOfTrainees,
       objectives,
       observedImprovement,
+      trainerFutureSessionComment,
+      supervisorFutureSessionComment,
+      signatures,
+      signOff,
       ratings,
       traineeRoster,
       trainees,
       commentsVersion: 1
     };
+    const hasMeaningfulDraft =
+      trainerName.trim().length > 0 ||
+      trainerDepartment.trim().length > 0 ||
+      trainingTitle.trim().length > 0 ||
+      trainingDate.trim().length > 0 ||
+      trainingDurationDays.trim().length > 0 ||
+      trainingDurationHours.trim().length > 0 ||
+      numberOfTrainees.trim().length > 0 ||
+      objectives.some((objective) => objective.trim().length > 0) ||
+      observedImprovement !== "" ||
+      ratings.some((score) => score !== null) ||
+      traineeRoster.some(
+        (row) => row.name.trim().length > 0 || row.departmentOrRole.trim().length > 0 || row.attendance !== ""
+      ) ||
+      trainees.some(
+        (row) => row.name.trim().length > 0 || row.understanding !== "" || row.independent !== ""
+      ) ||
+      trainerFutureSessionComment.trim().length > 0 ||
+      supervisorFutureSessionComment.trim().length > 0 ||
+      signatures.trainer ||
+      signatures.supervisor ||
+      signOff.trainerName.trim().length > 0 ||
+      signOff.supervisorName.trim().length > 0 ||
+      signOff.trainerDate.trim().length > 0 ||
+      signOff.supervisorDate.trim().length > 0;
+
+    if (!hasMeaningfulDraft && !distributedFormId) {
+      localStorage.removeItem(draftStorageKey);
+      return;
+    }
 
     localStorage.setItem(draftStorageKey, JSON.stringify(draftPayload));
   }, [
@@ -560,13 +706,16 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     numberOfTrainees,
     objectives,
     observedImprovement,
+    trainerFutureSessionComment,
+    supervisorFutureSessionComment,
+    signatures,
+    signOff,
     ratings,
     traineeRoster,
     trainees
   ]);
 
   useEffect(() => {
-    if (userRole !== "trainer") return;
     const submittedFeedback = linkedForm?.supervisorOnlyFeedback ?? [];
     if (!submittedFeedback.length) return;
 
@@ -586,7 +735,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       const hasManualRosterData = prev.some(
         (row) => row.name.trim() !== "" || row.departmentOrRole.trim() !== "" || row.attendance !== ""
       );
-      if (hasManualRosterData) return prev;
+      if (hasManualRosterData && userRole === "trainer") return prev;
 
       const rowsFromFeedback: TraineeRosterItem[] = submittedFeedback.map((entry) => ({
         name: entry.traineeName || "",
@@ -701,6 +850,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         createdAt: new Date().toISOString().slice(0, 10),
         submittedData: {
           trainerName,
+          trainerDepartment,
           trainingTitle,
           trainingDate,
           durationDays: trainingDurationDays,
@@ -709,6 +859,12 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           objectives,
           passRate: autoPassRate || "-",
           averageScoreDisplay: autoAverageScore || "-",
+          observedImprovement,
+          trainerFutureSessionComment,
+          supervisorFutureSessionComment,
+          trainees,
+          signatures,
+          signOff,
           traineeRoster
         }
       });
@@ -778,6 +934,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         createdAt: existingForm?.createdAt ?? new Date().toISOString().slice(0, 10),
         submittedData: {
           trainerName,
+          trainerDepartment,
           trainingTitle,
           trainingDate,
           durationDays: trainingDurationDays,
@@ -786,6 +943,12 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           objectives,
           passRate: autoPassRate || "-",
           averageScoreDisplay: autoAverageScore || "-",
+          observedImprovement,
+          trainerFutureSessionComment,
+          supervisorFutureSessionComment,
+          trainees,
+          signatures,
+          signOff,
           traineeRoster
         },
         supervisorOnlyFeedback: existingForm?.supervisorOnlyFeedback
@@ -797,6 +960,34 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         title: "Submitted To Supervisor",
         message: `Submitted successfully. This form was sent to ${assignedSupervisor?.name || assignedSupervisor?.email || "your assigned supervisor"}. Trainee link: /trainee-feedback?formId=${newFormId}`
       });
+
+      setActiveSection("A");
+      setDistributedFormId(null);
+      setTrainerName(currentUser?.name ?? "");
+      setTrainerDepartment(currentUser?.department ?? "");
+      setTrainingTitle("");
+      setTrainingDate("");
+      setTrainingDurationDays("");
+      setTrainingDurationHours("");
+      setNumberOfTrainees("");
+      setObjectives([""]);
+      setObservedImprovement("");
+      setTrainerFutureSessionComment("");
+      setSupervisorFutureSessionComment("");
+      setRatings(Array(feedbackStatements.length).fill(null));
+      setTraineeRoster([createEmptyRosterItem()]);
+      setTrainees([createEmptyTrainee()]);
+      setSignatures({ trainer: false, supervisor: false });
+      setSignOff({
+        trainerName: currentUser?.name ?? "",
+        trainerDate: "",
+        supervisorName: "",
+        supervisorDate: ""
+      });
+      setDraftRestored(false);
+      setShowDraftToast(false);
+      setRehydratedFromLinkedForm(false);
+
       if (draftStorageKey) {
         localStorage.removeItem(draftStorageKey);
       }
@@ -834,9 +1025,24 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   return (
     <main ref={formRef} className="min-h-screen bg-brand-mist py-8 md:py-10">
       <div className="mx-auto w-full max-w-6xl px-4">
-        <header className="mb-8 overflow-hidden rounded-2xl border border-brand-line bg-white shadow-panel">
+        <header className="relative mb-8 overflow-hidden rounded-2xl border border-brand-line bg-white shadow-panel">
           <div className="h-1.5 bg-brand-ruby" />
           <div className="p-5 md:p-7">
+            {!isSupervisorReviewMode ? (
+              <div className="absolute right-5 top-5">
+                <span
+                  className={`rounded-full border px-3 py-1 text-[11px] font-medium ${
+                    assignedSupervisor
+                      ? "border-slate-200 bg-slate-50 text-slate-700"
+                      : "border-rose-200 bg-rose-50 text-rose-700"
+                  }`}
+                >
+                  {assignedSupervisor
+                    ? `Assigned: ${assignedSupervisor.name || assignedSupervisor.email}`
+                    : "Assigned: Not set"}
+                </span>
+              </div>
+            ) : null}
             <div className="space-y-5 text-center">
               <div className="inline-flex rounded-xl border border-brand-line bg-white p-2.5 shadow-sm">
                 {/* Keep the official lockup untouched, but give it a compact executive frame. */}
@@ -854,6 +1060,22 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 <p className="mt-2 text-sm text-slate-600">Matateni Projects (Pty) Ltd</p>
               </div>
             </div>
+
+            {!isSupervisorReviewMode && showDraftToast ? (
+              <div className="absolute right-5 top-14 max-w-xs rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Draft saved.</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowDraftToast(false)}
+                    className="text-emerald-700 hover:text-emerald-900"
+                    aria-label="Dismiss draft restored message"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </header>
 
@@ -926,11 +1148,6 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         </div>
 
         <div className="space-y-5">
-          {!isSupervisorReviewMode && draftRestored ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-panel">
-              Saved draft restored. You can continue where you left off.
-            </div>
-          ) : null}
           {activeSection === "A" && visibleSections.includes("A") ? (
           <Card section="A" title="Training Information" owner="Trainer" disabled={isSupervisorReviewMode}>
             <div className="grid gap-4 md:grid-cols-2">
@@ -1104,6 +1321,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                   <div>
                     <p className="text-sm font-semibold text-brand-ink">Trainee Roster (entered by trainer)</p>
                     <p className="text-xs text-slate-500">Track who attended before recording aggregate feedback scores.</p>
+                    <p className="mt-1 text-[11px] text-slate-500">Rows marked as submitted are locked and cannot be removed.</p>
                   </div>
                   <button
                     type="button"
@@ -1124,12 +1342,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                       </tr>
                     </thead>
                     <tbody>
-                      {traineeRoster.map((item, index) => (
+                      {traineeRoster.map((item, index) => {
+                        const rowSubmitted = submittedTraineeNameSet.has(normalizeTraineeKey(item.name));
+                        return (
                         <tr key={`roster-${index}`} className="odd:bg-white even:bg-slate-50">
                           <td className={tableCell}>
                             <input
                               type="text"
                               value={item.name}
+                              readOnly={rowSubmitted}
                               placeholder={`Trainee ${index + 1}`}
                               onChange={(event) => {
                                 const value = event.target.value;
@@ -1139,13 +1360,14 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                                   return next;
                                 });
                               }}
-                              className="w-full rounded-lg border border-brand-line px-2 py-1.5 text-sm"
+                              className={`w-full rounded-lg border border-brand-line px-2 py-1.5 text-sm ${rowSubmitted ? "bg-slate-100 text-slate-500" : ""}`}
                             />
                           </td>
                           <td className={tableCell}>
                             <input
                               type="text"
                               value={item.departmentOrRole}
+                              readOnly={rowSubmitted}
                               placeholder="e.g. Operations"
                               onChange={(event) => {
                                 const value = event.target.value;
@@ -1155,13 +1377,14 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                                   return next;
                                 });
                               }}
-                              className="w-full rounded-lg border border-brand-line px-2 py-1.5 text-sm"
+                              className={`w-full rounded-lg border border-brand-line px-2 py-1.5 text-sm ${rowSubmitted ? "bg-slate-100 text-slate-500" : ""}`}
                             />
                           </td>
                           <td className={`${tableCell} text-center`}>
                             <YesNoGroup
                               name={`attendance-${index}`}
                               value={item.attendance}
+                              disabled={rowSubmitted}
                               onChange={(value) => {
                                 setTraineeRoster((prev) => {
                                   const next = [...prev];
@@ -1172,9 +1395,14 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                             />
                           </td>
                           <td className={`${tableCell} text-center`}>
+                            {rowSubmitted ? (
+                              <span className="mr-2 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                Submitted
+                              </span>
+                            ) : null}
                             <button
                               type="button"
-                              disabled={traineeRoster.length === 1}
+                              disabled={traineeRoster.length === 1 || rowSubmitted}
                               onClick={() =>
                                 setTraineeRoster((prev) => prev.filter((_, rowIndex) => rowIndex !== index))
                               }
@@ -1184,7 +1412,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                             </button>
                           </td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>
@@ -1230,6 +1458,44 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
             <div className="mt-4 max-w-md">
               <TextInput label="Average Score (auto-calculated)" value={autoAverageScore || "-"} readOnly />
             </div>
+            {isSupervisorReviewMode ? (
+              <div className="mt-5 rounded-xl border border-brand-line bg-slate-50 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-brand-ink">Trainee Comments (Supervisor View)</h3>
+                  <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                    {linkedForm?.supervisorOnlyFeedback?.length ?? 0}
+                  </span>
+                </div>
+                {(linkedForm?.supervisorOnlyFeedback?.length ?? 0) === 0 ? (
+                  <p className="text-sm text-slate-600">No trainee comments submitted yet.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {linkedForm?.supervisorOnlyFeedback?.map((entry, index) => (
+                      <article
+                        key={`${entry.traineeName || "trainee"}-${entry.employeeId || "no-id"}-${index}`}
+                        className="rounded-lg border border-slate-200 bg-white p-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-900">
+                            {entry.traineeName || "Anonymous trainee"}
+                          </p>
+                          <p className="text-xs text-slate-500">{entry.feedbackDate || "No date"}</p>
+                        </div>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {entry.employeeId || "No employee ID"} • {entry.departmentRole || "No department/role"}
+                        </p>
+                        <p className="mt-2 text-sm text-slate-700">
+                          {entry.comment?.trim().length ? entry.comment : "No comment provided."}
+                        </p>
+                        <p className="mt-2 text-xs font-semibold text-slate-600">
+                          Score: {entry.averageScore?.toFixed?.(1) ?? entry.averageScore ?? 0} / 5
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
           </Card>
           ) : null}
 
@@ -1567,6 +1833,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                       <td className={tableCell}>
                         <input
                           type="text"
+                          value={key === "trainer" ? signOff.trainerName : signOff.supervisorName}
+                          onChange={(event) =>
+                            setSignOff((prev) => ({
+                              ...prev,
+                              [key === "trainer" ? "trainerName" : "supervisorName"]: event.target.value
+                            }))
+                          }
                           readOnly={rowReadOnly}
                           className="w-full rounded-lg border border-brand-line px-2 py-1.5 read-only:bg-slate-100"
                         />
@@ -1579,10 +1852,20 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                             setSignatures((prev) => ({ ...prev, [key]: isSigned }))
                           }
                         />
+                        {signatures[key] ? (
+                          <p className="mt-1 text-[11px] font-semibold text-emerald-700">Signed</p>
+                        ) : null}
                       </td>
                       <td className={tableCell}>
                         <input
                           type="date"
+                          value={key === "trainer" ? signOff.trainerDate : signOff.supervisorDate}
+                          onChange={(event) =>
+                            setSignOff((prev) => ({
+                              ...prev,
+                              [key === "trainer" ? "trainerDate" : "supervisorDate"]: event.target.value
+                            }))
+                          }
                           readOnly={rowReadOnly}
                           className="w-full rounded-lg border border-brand-line px-2 py-1.5 read-only:bg-slate-100"
                         />
@@ -1608,7 +1891,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
             <p className="text-sm font-medium text-slate-500">
               Section {activeSection}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col items-end gap-1">
+              {!isSupervisorReviewMode && !assignedSupervisor ? (
+                <p className="text-xs font-medium text-rose-700">
+                  No supervisor assigned. Contact admin before submitting.
+                </p>
+              ) : null}
+              <div className="flex items-center gap-2">
               {isLastSection ? (
                 <button
                   type="button"
@@ -1630,6 +1919,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                   Next ?
                 </button>
               )}
+              </div>
             </div>
           </div>
         </div>

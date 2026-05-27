@@ -7,6 +7,7 @@ import { exportCsvRows, exportSignedFormPdf } from "../../lib/export";
 
 export function TrainerFeedbackPage() {
   const forms = useAppStore((s) => s.forms);
+  const users = useAppStore((s) => s.users);
   const currentUser = useAppStore((s) => s.currentUser);
   const markRead = useAppStore((s) => s.markTrainerFeedbackRead);
 
@@ -36,6 +37,11 @@ export function TrainerFeedbackPage() {
   }, [selected?.id, selected?.trainerFeedbackReadAt, markRead]);
 
   const unreadCount = feedbackForms.filter((f) => !f.trainerFeedbackReadAt).length;
+  const assignedSupervisor = useMemo(() => {
+    const assignedId = currentUser?.supervisorId;
+    if (!assignedId) return undefined;
+    return users.find((u) => u.id === assignedId && u.role === "supervisor");
+  }, [currentUser?.supervisorId, users]);
 
   const exportTrainerCsv = () => {
     exportCsvRows(
@@ -83,6 +89,18 @@ export function TrainerFeedbackPage() {
             >
               Export CSV
             </button>
+            <span
+              className={cn(
+                "rounded-full border px-3 py-1 text-[11px] font-medium",
+                assignedSupervisor
+                  ? "border-slate-200 bg-slate-50 text-slate-700"
+                  : "border-rose-200 bg-rose-50 text-rose-700"
+              )}
+            >
+              {assignedSupervisor
+                ? `Assigned: ${assignedSupervisor.name || assignedSupervisor.email}`
+                : "Assigned: Not set"}
+            </span>
           </div>
         </div>
       </section>

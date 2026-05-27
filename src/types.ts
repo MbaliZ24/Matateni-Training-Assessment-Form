@@ -36,6 +36,7 @@ export type TrainingForm = {
   createdAt: string;
   submittedData?: {
     trainerName: string;
+    trainerDepartment?: string;
     trainingTitle: string;
     trainingDate: string;
     durationDays: string;
@@ -44,6 +45,17 @@ export type TrainingForm = {
     objectives: string[];
     passRate: string;
     averageScoreDisplay: string;
+    observedImprovement?: "Yes" | "No" | "";
+    trainerFutureSessionComment?: string;
+    supervisorFutureSessionComment?: string;
+    trainees?: { name: string; understanding: "Yes" | "No" | ""; independent: "Yes" | "No" | "" }[];
+    signatures?: { trainer: boolean; supervisor: boolean };
+    signOff?: {
+      trainerName?: string;
+      trainerDate?: string;
+      supervisorName?: string;
+      supervisorDate?: string;
+    };
     traineeRoster: { name: string; departmentOrRole: string; attendance: "Yes" | "No" | "" }[];
   };
   supervisorOnlyFeedback?: {

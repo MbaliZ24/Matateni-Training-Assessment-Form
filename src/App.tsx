@@ -4,6 +4,8 @@ import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { ExactAssessmentFormPage } from "./pages/trainer/ExactAssessmentFormPage";
 import { TrainerFeedbackPage } from "./pages/trainer/TrainerFeedbackPage";
+import { TrainerSubmissionsPage } from "./pages/trainer/TrainerSubmissionsPage";
+import { TrainerSubmissionViewPage } from "./pages/trainer/TrainerSubmissionViewPage";
 import { TraineeFeedbackPage } from "./pages/trainee/TraineeFeedbackPage";
 import { SupervisorDashboardPage } from "./pages/supervisor/SupervisorDashboardPage";
 import { SupervisorReportsPage } from "./pages/supervisor/SupervisorReportsPage";
@@ -44,6 +46,8 @@ export default function App() {
         <Route path="/trainer" element={<Navigate to="/trainer/create" replace />} />
         <Route path="/trainer/create" element={<ExactAssessmentFormPage />} />
         <Route path="/trainer/feedback" element={<TrainerFeedbackPage />} />
+        <Route path="/trainer/submissions" element={<TrainerSubmissionsPage />} />
+        <Route path="/trainer/submissions/view" element={<TrainerSubmissionViewPage />} />
       </Route>
 
       <Route element={<Protected role="supervisor" title="Supervisor Workspace" />}>
