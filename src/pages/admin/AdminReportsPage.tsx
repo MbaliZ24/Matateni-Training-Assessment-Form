@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/button";
 import { useAppStore } from "../../store/app-store";
 import { exportCsvRows } from "../../lib/export";
 import type { Status } from "../../types";
+import { isInStatuses, REVIEW_QUEUE_STATUSES } from "../../lib/form-status";
 
 const reportStatuses: ("All" | Status)[] = [
   "All",
@@ -13,8 +14,7 @@ const reportStatuses: ("All" | Status)[] = [
   "Submitted",
   "Under Review",
   "Approved",
-  "Needs Correction",
-  "Rejected"
+  "Needs Correction"
 ];
 
 function pct(value: number, total: number) {
@@ -74,7 +74,7 @@ export function AdminReportsPage() {
   const metrics = useMemo(() => {
     const total = filteredForms.length;
     const approved = filteredForms.filter((f) => f.status === "Approved").length;
-    const pending = filteredForms.filter((f) => ["Submitted", "Under Review", "Needs Correction"].includes(f.status)).length;
+    const pending = filteredForms.filter((f) => isInStatuses(f.status, REVIEW_QUEUE_STATUSES)).length;
     const totalResponses = filteredForms.reduce((sum, f) => sum + f.feedbackResponses, 0);
     const totalInvited = filteredForms.reduce((sum, f) => sum + f.trainees, 0);
     const responseRate = pct(totalResponses, totalInvited);
@@ -289,3 +289,5 @@ export function AdminReportsPage() {
     </div>
   );
 }
+
+

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { useAppStore } from "../../store/app-store";
+import { isInStatuses, REVIEW_QUEUE_STATUSES } from "../../lib/form-status";
 
 function pct(value: number, total: number) {
   return Math.round((value / Math.max(1, total)) * 100);
@@ -26,11 +27,11 @@ export function AdminDashboardPage() {
   const assignedForms = useMemo(() => forms.filter((f) => !!f.assignedSupervisorId), [forms]);
   const unassignedForms = useMemo(() => forms.filter((f) => !f.assignedSupervisorId), [forms]);
   const pendingReviewForms = useMemo(
-    () => forms.filter((f) => ["Submitted", "Under Review", "Needs Correction"].includes(f.status)),
+    () => forms.filter((f) => isInStatuses(f.status, REVIEW_QUEUE_STATUSES)),
     [forms]
   );
   const signedOffForms = useMemo(() => forms.filter((f) => f.status === "Approved"), [forms]);
-  const rejectedForms = useMemo(() => forms.filter((f) => f.status === "Rejected"), [forms]);
+  const needsCorrectionForms = useMemo(() => forms.filter((f) => f.status === "Needs Correction"), [forms]);
 
   const totalInvited = useMemo(() => forms.reduce((sum, form) => sum + form.trainees, 0), [forms]);
   const totalResponses = useMemo(() => forms.reduce((sum, form) => sum + form.feedbackResponses, 0), [forms]);
@@ -50,7 +51,7 @@ export function AdminDashboardPage() {
       .map((supervisor) => {
         const load = forms.filter((form) => form.assignedSupervisorId === supervisor.id).length;
         const pending = forms.filter(
-          (form) => form.assignedSupervisorId === supervisor.id && ["Submitted", "Under Review", "Needs Correction"].includes(form.status)
+          (form) => form.assignedSupervisorId === supervisor.id && isInStatuses(form.status, REVIEW_QUEUE_STATUSES)
         ).length;
         return {
           id: supervisor.id,
@@ -209,9 +210,9 @@ export function AdminDashboardPage() {
             <div className="rounded-lg border border-slate-200 p-3">
               <div className="flex items-center gap-2 text-slate-900">
                 <XCircle className="size-4 text-rose-600" />
-                <p className="text-sm font-semibold">Rejected Forms</p>
+                <p className="text-sm font-semibold">Needs Correction Forms</p>
               </div>
-              <p className="mt-1 text-sm text-slate-700">{rejectedForms.length} forms rejected</p>
+              <p className="mt-1 text-sm text-slate-700">{needsCorrectionForms.length} forms returned for correction</p>
             </div>
           </CardContent>
         </Card>
@@ -258,3 +259,5 @@ export function AdminDashboardPage() {
     </div>
   );
 }
+
+

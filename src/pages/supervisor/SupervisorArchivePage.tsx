@@ -1,15 +1,15 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Download, Eye, Search } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { useAppStore } from "../../store/app-store";
 import { exportSignedFormPdf } from "../../lib/export";
+import { isInStatuses, SUPERVISOR_ARCHIVE_STATUSES } from "../../lib/form-status";
 
 function statusPill(status: string) {
   if (status === "Approved") return "bg-emerald-50 text-emerald-700";
   if (status === "Under Review" || status === "Submitted") return "bg-amber-50 text-amber-700";
   if (status === "Needs Correction") return "bg-rose-50 text-rose-700";
-  if (status === "Rejected") return "bg-red-50 text-red-700";
   return "bg-slate-100 text-slate-700";
 }
 
@@ -30,7 +30,7 @@ export function SupervisorArchivePage() {
         .filter(
           (f) =>
             f.assignedSupervisorId === currentUser?.id &&
-            ["Approved", "Needs Correction", "Rejected"].includes(f.status)
+            isInStatuses(f.status, SUPERVISOR_ARCHIVE_STATUSES)
         )
         .sort((a, b) => b.date.localeCompare(a.date)),
     [forms, currentUser?.id]
@@ -121,3 +121,5 @@ export function SupervisorArchivePage() {
     </div>
   );
 }
+
+

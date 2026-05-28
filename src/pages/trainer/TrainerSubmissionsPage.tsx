@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Download, Eye } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { StatusBadge } from "../../components/ui/status-badge";
 import { useAppStore } from "../../store/app-store";
 import { exportSignedFormPdf } from "../../lib/export";
+import { isInStatuses, TRAINER_SUBMISSION_STATUSES } from "../../lib/form-status";
 
 export function TrainerSubmissionsPage() {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ export function TrainerSubmissionsPage() {
         .filter(
           (f) =>
             f.trainerId === currentUser?.id &&
-            ["Submitted", "Under Review", "Approved", "Needs Correction", "Rejected", "Completed"].includes(f.status)
+            isInStatuses(f.status, TRAINER_SUBMISSION_STATUSES)
         )
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [forms, currentUser?.id]
@@ -98,3 +99,5 @@ export function TrainerSubmissionsPage() {
     </div>
   );
 }
+
+

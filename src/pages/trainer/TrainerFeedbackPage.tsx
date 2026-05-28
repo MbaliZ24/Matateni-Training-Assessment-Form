@@ -17,7 +17,7 @@ export function TrainerFeedbackPage() {
         .filter(
           (f) =>
             f.trainerId === currentUser?.id &&
-            (!!f.supervisorReview || ["Approved", "Needs Correction", "Rejected", "Under Review"].includes(f.status))
+            (!!f.supervisorReview || ["Approved", "Needs Correction", "Under Review"].includes(f.status))
         )
         .sort((a, b) =>
           (b.supervisorReview?.updatedAt ?? b.createdAt).localeCompare(a.supervisorReview?.updatedAt ?? a.createdAt)
@@ -85,7 +85,6 @@ export function TrainerFeedbackPage() {
   const getStatusClasses = (status?: string) => {
     if (status === "Approved") return "bg-emerald-100 text-emerald-700";
     if (status === "Needs Correction") return "bg-amber-100 text-amber-700";
-    if (status === "Rejected") return "bg-rose-100 text-rose-700";
     return "bg-slate-100 text-slate-700";
   };
 
@@ -264,4 +263,6 @@ export function TrainerFeedbackPage() {
     </div>
   );
 }
+
+
 

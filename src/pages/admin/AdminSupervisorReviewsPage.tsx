@@ -1,6 +1,7 @@
 ﻿import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { useAppStore } from "../../store/app-store";
+import { isInStatuses, REVIEW_QUEUE_STATUSES } from "../../lib/form-status";
 
 export function AdminSupervisorReviewsPage() {
   const forms = useAppStore((s) => s.forms);
@@ -12,7 +13,7 @@ export function AdminSupervisorReviewsPage() {
   );
 
   const reviewQueue = useMemo(
-    () => forms.filter((f) => ["Submitted", "Under Review", "Needs Correction"].includes(f.status)),
+    () => forms.filter((f) => isInStatuses(f.status, REVIEW_QUEUE_STATUSES)),
     [forms]
   );
 
@@ -59,4 +60,3 @@ export function AdminSupervisorReviewsPage() {
     </div>
   );
 }
-

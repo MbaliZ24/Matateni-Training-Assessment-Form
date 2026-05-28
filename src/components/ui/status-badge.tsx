@@ -9,7 +9,6 @@ const map: Record<Status, string> = {
   "Under Review": "bg-amber-100 text-amber-800",
   Approved: "bg-emerald-100 text-emerald-700",
   "Needs Correction": "bg-orange-100 text-orange-700",
-  Rejected: "bg-red-100 text-red-700",
   Completed: "bg-rose-50 text-rose-900"
 };
 

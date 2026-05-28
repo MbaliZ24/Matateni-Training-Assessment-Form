@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CheckCircle2,
@@ -15,15 +15,9 @@ import { Card, CardContent } from "../../components/ui/card";
 import { StatusBadge } from "../../components/ui/status-badge";
 import { useAppStore } from "../../store/app-store";
 import { exportSignedFormPdf } from "../../lib/export";
+import { isInStatuses, REVIEW_QUEUE_STATUSES } from "../../lib/form-status";
 
-type ReviewStatus = "Submitted" | "Under Review" | "Needs Correction";
 type MenuState = { id: string; x: number; y: number } | null;
-
-function toReviewStatus(status: string): ReviewStatus {
-  if (status === "Needs Correction") return "Needs Correction";
-  if (status === "Under Review") return "Under Review";
-  return "Submitted";
-}
 
 export function SupervisorDashboardPage() {
   const navigate = useNavigate();
@@ -33,7 +27,6 @@ export function SupervisorDashboardPage() {
   const setSelectedReviewFormId = useAppStore((s) => s.setSelectedReviewFormId);
 
   const [query, setQuery] = useState("");
-  const [selectedStatus] = useState<"All" | ReviewStatus>("All");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<MenuState>(null);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
@@ -88,7 +81,7 @@ export function SupervisorDashboardPage() {
       forms.filter(
         (f) =>
           f.assignedSupervisorId === currentUser?.id &&
-          ["Submitted", "Under Review", "Needs Correction"].includes(f.status)
+          isInStatuses(f.status, REVIEW_QUEUE_STATUSES)
       ),
     [forms, currentUser?.id]
   );
@@ -103,12 +96,10 @@ export function SupervisorDashboardPage() {
           f.title.toLowerCase().includes(q) ||
           trainerName.toLowerCase().includes(q) ||
           f.department.toLowerCase().includes(q);
-        const mapped = toReviewStatus(f.status);
-        const matchesStatus = selectedStatus === "All" || mapped === selectedStatus;
-        return matchesQuery && matchesStatus;
+        return matchesQuery;
       })
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [incomingForms, query, selectedStatus, users]);
+  }, [incomingForms, query, users]);
 
   const selectedForm = useMemo(() => {
     if (filteredForms.length === 0) return null;
@@ -120,7 +111,7 @@ export function SupervisorDashboardPage() {
     () => forms.filter((f) => f.assignedSupervisorId === currentUser?.id),
     [forms, currentUser?.id]
   );
-  const reviewedCount = assignedForms.filter((f) => ["Approved", "Rejected"].includes(f.status)).length;
+  const reviewedCount = assignedForms.filter((f) => f.status === "Approved").length;
   const totalResponses = incomingForms.reduce((sum, f) => sum + f.feedbackResponses, 0);
   const responseCapacity = incomingForms.reduce((sum, f) => sum + f.trainees, 0);
   const averageRating =
@@ -251,7 +242,7 @@ export function SupervisorDashboardPage() {
                           </span>
                         </td>
                         <td className="px-4 py-2.5">
-                          <StatusBadge status={f.status === "Needs Correction" ? "Rejected" : f.status} />
+                          <StatusBadge status={f.status} />
                         </td>
                         <td className="px-4 py-2.5">
                           <div className="relative">
@@ -414,3 +405,5 @@ export function SupervisorDashboardPage() {
     </div>
   );
 }
+
+

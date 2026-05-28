@@ -29,6 +29,31 @@ function buildSignedFormHtml(form: TrainingForm, includeTraineeComments: boolean
   const trainees = submitted?.trainees ?? [];
   const roster = submitted?.traineeRoster ?? [];
   const formats = submitted?.trainingFormats ?? [];
+  const statementLabels = [
+    "The training objectives were clear.",
+    "The content was relevant to my role.",
+    "The trainer was knowledgeable and organised.",
+    "The pace and duration of training were appropriate.",
+    "Practical exercises / workplace examples were useful.",
+    "The training will help me perform my job more effectively."
+  ];
+  const computedStatementAverages = (() => {
+    const totals = Array(statementLabels.length).fill(0);
+    const counts = Array(statementLabels.length).fill(0);
+    traineeComments.forEach((comment) => {
+      comment.statementRatings?.forEach((rating, index) => {
+        if (typeof rating === "number" && index < statementLabels.length) {
+          totals[index] += rating;
+          counts[index] += 1;
+        }
+      });
+    });
+    return totals.map((total, index) => (counts[index] > 0 ? Number((total / counts[index]).toFixed(2)) : 0));
+  })();
+  const statementAverages =
+    submitted?.perStatementAverages?.length === statementLabels.length
+      ? submitted.perStatementAverages
+      : computedStatementAverages;
 
   const esc = (value: unknown) =>
     String(value ?? "")
@@ -55,21 +80,74 @@ function buildSignedFormHtml(form: TrainingForm, includeTraineeComments: boolean
     @page { size: A4 portrait; margin: 10mm; }
     * { box-sizing: border-box; }
     body {
-      font-family: "Segoe UI", Arial, sans-serif;
+      font-family: "Calibri", "Segoe UI", Arial, sans-serif;
       color: #0f172a;
       margin: 0;
       font-size: 11px;
-      line-height: 1.35;
+      line-height: 1.3;
+      position: relative;
+      background: #fff;
+    }
+    .watermark {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .watermark img {
+      width: 420px;
+      max-width: 70vw;
+      height: auto;
+      opacity: 0.06;
+      filter: grayscale(100%);
+      transform: rotate(-18deg);
+      object-fit: contain;
+    }
+    .content {
+      position: relative;
+      z-index: 1;
+    }
+    .header {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 8px;
+      text-align: center;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .logo-wrap {
+      display: inline-block;
+      border: 1px solid #dbe3ee;
+      border-radius: 8px;
+      padding: 8px 12px;
+      background: #fff;
+      margin-bottom: 8px;
+    }
+    .logo {
+      max-width: 360px;
+      width: 100%;
+      height: auto;
+      object-fit: contain;
+      display: block;
+    }
+    .subhead {
+      margin: 4px 0 0;
+      font-size: 10px;
+      color: #64748b;
     }
     .title {
-      margin: 0 0 4px;
-      font-size: 18px;
+      margin: 4px 0 2px;
+      font-size: 16px;
       font-weight: 700;
     }
     .meta {
       color: #475569;
       font-size: 10px;
-      margin-bottom: 8px;
+      margin-top: 4px;
     }
     .section {
       border: 1px solid #cbd5e1;
@@ -112,38 +190,66 @@ function buildSignedFormHtml(form: TrainingForm, includeTraineeComments: boolean
     }
     th { background: #f8fafc; color: #475569; font-weight: 600; }
     .nowrap { white-space: nowrap; }
+    .footer-note {
+      margin-top: 8px;
+      font-size: 9.5px;
+      color: #64748b;
+      text-align: center;
+      border-top: 1px dashed #cbd5e1;
+      padding-top: 5px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
   </style>
 </head>
 <body>
-  <h1 class="title">Training Effectiveness Assessment Form</h1>
+  <div class="watermark" aria-hidden="true">
+    <img src="/matateni-logo.png" alt="" />
+  </div>
+  <div class="content">
+  <section class="header">
+    <div class="logo-wrap">
+      <img class="logo" src="/matateni-logo.png" alt="Matateni Technologies" />
+    </div>
+    <h1 class="title">Training Effectiveness Assessment Form</h1>
+    <p class="subhead">Matateni Projects (Pty) Ltd</p>
+    <div class="meta">
+      Form ID: ${esc(form.id)} | Title: ${esc(form.title)} | Date: ${esc(form.date)} | Submitted: ${esc(
+        form.submittedAt || form.createdAt
+      )} | Status: ${esc(form.status)}
+    </div>
+    <p class="subhead">Developed by: support@matateni.tech | https://matateni.tech</p>
+  </section>
+
   <div class="meta">
-    Form ID: ${esc(form.id)} | Title: ${esc(form.title)} | Date: ${esc(form.date)} | Submitted: ${esc(
-      form.submittedAt || form.createdAt
-    )} | Status: ${esc(form.status)}
+    This document summarizes trainer submission, trainee feedback, and supervisor review/sign-off.
   </div>
 
   <section class="section">
-    <h2>Section A - Training Information</h2>
-    <div class="grid">
-      <div class="cell"><b>Trainer Name</b><span>${txt(submitted?.trainerName)}</span></div>
-      <div class="cell"><b>Trainer Department/Role</b><span>${txt(submitted?.trainerDepartment || form.department)}</span></div>
-      <div class="cell"><b>Training Date</b><span>${txt(submitted?.trainingDate || form.date)}</span></div>
-      <div class="cell wide"><b>Training Title / Topic</b><span>${txt(submitted?.trainingTitle || form.title)}</span></div>
-      <div class="cell"><b>Duration (Days)</b><span>${txt(submitted?.durationDays)}</span></div>
-      <div class="cell"><b>Duration (Hours)</b><span>${txt(submitted?.durationHours)}</span></div>
-      <div class="cell"><b>Number of Trainees</b><span>${txt(submitted?.numberOfTrainees || String(form.trainees))}</span></div>
-      <div class="cell wide"><b>Training Format</b><span>${formats.length ? formats.map(esc).join(", ") : "-"}</span></div>
-      <div class="cell wide"><b>Target User Group</b><span>${txt(submitted?.targetUserGroup)}</span></div>
-    </div>
+    <h2>Section A: Training Information</h2>
+    <table>
+      <thead><tr><th>Field Name</th><th>Training Details</th></tr></thead>
+      <tbody>
+        <tr><td>Trainer's Name</td><td>${txt(submitted?.trainerName)}</td></tr>
+        <tr><td>Trainer's Department / Role</td><td>${txt(submitted?.trainerDepartment || form.department)}</td></tr>
+        <tr><td>Training Title / Topic</td><td>${txt(submitted?.trainingTitle || form.title)}</td></tr>
+        <tr><td>Training Date</td><td>${txt(submitted?.trainingDate || form.date)}</td></tr>
+        <tr><td>Training Duration</td><td>${txt(submitted?.durationHours)} hour(s)</td></tr>
+        <tr><td>Training Format</td><td>${formats.length ? formats.map(esc).join(", ") : "-"}</td></tr>
+        <tr><td>Number of Trainees</td><td>${txt(submitted?.numberOfTrainees || String(form.trainees))}</td></tr>
+        <tr><td>Target User Group</td><td>${txt(submitted?.targetUserGroup)}</td></tr>
+      </tbody>
+    </table>
   </section>
 
   <section class="section">
-    <h2>Section B - Training Objectives</h2>
+    <h2>Section B: Training Objectives</h2>
     ${listOrDash(objectives)}
   </section>
 
   <section class="section">
-    <h2>Section C - Trainee Feedback Summary</h2>
+    <h2>Section C: Trainee Feedback Summary</h2>
+    <p><b>Total Feedbacks Submitted:</b> ${esc(form.feedbackResponses)}</p>
     <div class="grid">
       <div class="cell"><b>Responses</b><span>${esc(form.feedbackResponses)} / ${esc(form.trainees)}</span></div>
       <div class="cell"><b>Average Score</b><span>${esc(form.averageScore.toFixed(1))} / 5</span></div>
@@ -159,10 +265,21 @@ function buildSignedFormHtml(form: TrainingForm, includeTraineeComments: boolean
            </table>`
         : "<p class='muted'>No roster submitted.</p>"
     }
+    ${
+      statementAverages.length === statementLabels.length
+        ? `<table>
+             <thead><tr><th>Evaluation Criteria / Statement</th><th>Aggregate Rating (out of 5)</th></tr></thead>
+             <tbody>${statementLabels
+               .map((label, i) => `<tr><td>${esc(label)}</td><td class="nowrap">${statementAverages[i].toFixed(2)} / 5</td></tr>`)
+               .join("")}</tbody>
+           </table>`
+        : ""
+    }
   </section>
 
   <section class="section">
-    <h2>Section D - Skills & Follow-up</h2>
+    <h2>Section D: Knowledge / Skills Check (Trainer Assessment)</h2>
+    <p><b>Total Trainees Evaluated:</b> ${esc(trainees.length)}</p>
     ${
       trainees.length
         ? `<table>
@@ -176,7 +293,9 @@ function buildSignedFormHtml(form: TrainingForm, includeTraineeComments: boolean
            </table>`
         : "<p class='muted'>No skills evaluation submitted.</p>"
     }
+    <h2 style="margin-top:8px">Section E: Workplace Application & Follow-up</h2>
     <div class="grid" style="margin-top:6px">
+      <div class="cell"><b>Supervisor Name</b><span>${txt(submitted?.followUpSupervisorName || submitted?.signOff?.supervisorName)}</span></div>
       <div class="cell"><b>Application Extent</b><span>${txt(submitted?.applicationExtent)}</span></div>
       <div class="cell"><b>Observed Improvement</b><span>${yesNo(submitted?.observedImprovement)}</span></div>
       <div class="cell"><b>Support Needed</b><span>${txt(submitted?.supportNeeded)}</span></div>
@@ -186,31 +305,38 @@ function buildSignedFormHtml(form: TrainingForm, includeTraineeComments: boolean
   </section>
 
   <section class="section">
-    <h2>Section F - Reflection</h2>
-    <div class="grid">
-      <div class="cell wide"><b>What worked well</b><span>${txt(submitted?.workedWellComment)}</span></div>
-      <div class="cell wide"><b>Trainer future-session comment</b><span>${txt(submitted?.trainerFutureSessionComment)}</span></div>
-      <div class="cell wide"><b>Supervisor future-session comment</b><span>${txt(submitted?.supervisorFutureSessionComment)}</span></div>
-      <div class="cell"><b>Effectiveness Rating</b><span>${txt(submitted?.effectivenessRating)}</span></div>
-      <div class="cell wide"><b>Recommendation</b><span>${txt(submitted?.recommendationChoice || form.recommendation)}</span></div>
-    </div>
+    <h2>Section F: Overall Trainer Reflection & Improvement</h2>
+    <table>
+      <thead><tr><th>Reflection Field</th><th>Details</th></tr></thead>
+      <tbody>
+        <tr><td>What worked well in this training</td><td>${txt(submitted?.workedWellComment)}</td></tr>
+        <tr><td>What would you change for future sessions</td><td>${txt(submitted?.trainerFutureSessionComment)}</td></tr>
+        <tr><td>Supervisor comment for future sessions</td><td>${txt(submitted?.supervisorFutureSessionComment)}</td></tr>
+        <tr><td>Training effectiveness rating (overall)</td><td>${txt(submitted?.effectivenessRating)}</td></tr>
+        <tr><td>Recommendation</td><td>${txt(submitted?.recommendationChoice || form.recommendation)}</td></tr>
+      </tbody>
+    </table>
   </section>
 
   <section class="section">
-    <h2>Section G - Sign-off</h2>
-    <div class="grid">
-      <div class="cell"><b>Trainer Name</b><span>${txt(submitted?.signOff?.trainerName)}</span></div>
-      <div class="cell"><b>Trainer Signed</b><span>${submitted?.signatures?.trainer ? "Yes" : "No"}</span></div>
-      <div class="cell"><b>Trainer Date</b><span>${txt(submitted?.signOff?.trainerDate)}</span></div>
-      <div class="cell"><b>Trainer Signature Image</b>${imageTag(submitted?.signatures?.trainerImage, "Trainer signature")}</div>
-      <div class="cell"><b>Supervisor Name</b><span>${txt(submitted?.signOff?.supervisorName)}</span></div>
-      <div class="cell"><b>Supervisor Signed</b><span>${submitted?.signatures?.supervisor ? "Yes" : "No"}</span></div>
-      <div class="cell"><b>Supervisor Date</b><span>${txt(submitted?.signOff?.supervisorDate)}</span></div>
-      <div class="cell"><b>Supervisor Signature Image</b>${imageTag(
-        submitted?.signatures?.supervisorImage,
-        "Supervisor signature"
-      )}</div>
-    </div>
+    <h2>Section G: Sign-off</h2>
+    <table>
+      <thead><tr><th>Sign-off Role</th><th>Name</th><th>Signature</th><th>Date Signed</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Trainer</td>
+          <td>${txt(submitted?.signOff?.trainerName)}</td>
+          <td>${imageTag(submitted?.signatures?.trainerImage, "Trainer signature")} ${submitted?.signatures?.trainer ? "<span class='nowrap'>Signed</span>" : "-"}</td>
+          <td>${txt(submitted?.signOff?.trainerDate)}</td>
+        </tr>
+        <tr>
+          <td>Supervisor</td>
+          <td>${txt(submitted?.signOff?.supervisorName)}</td>
+          <td>${imageTag(submitted?.signatures?.supervisorImage, "Supervisor signature")} ${submitted?.signatures?.supervisor ? "<span class='nowrap'>Signed</span>" : "-"}</td>
+          <td>${txt(submitted?.signOff?.supervisorDate)}</td>
+        </tr>
+      </tbody>
+    </table>
   </section>
 
   <section class="section">
@@ -254,6 +380,10 @@ function buildSignedFormHtml(form: TrainingForm, includeTraineeComments: boolean
          </section>`
       : ""
   }
+  <div class="footer-note">
+    Matateni Projects (Pty) Ltd • Confidential Internal Document • For training governance and audit use.
+  </div>
+</div>
 </body>
 </html>`;
 }

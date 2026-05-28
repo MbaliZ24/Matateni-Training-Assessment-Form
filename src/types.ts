@@ -8,7 +8,6 @@ export type Status =
   | "Under Review"
   | "Approved"
   | "Needs Correction"
-  | "Rejected"
   | "Completed";
 
 export type User = {
@@ -50,6 +49,7 @@ export type TrainingForm = {
     observedImprovement?: "Yes" | "No" | "";
     trainingFormats?: string[];
     targetUserGroup?: string;
+    followUpSupervisorName?: string;
     applicationExtent?: string;
     observedImprovementDetails?: string;
     supportNeeded?: string;
@@ -57,6 +57,7 @@ export type TrainingForm = {
     workedWellComment?: string;
     effectivenessRating?: string;
     recommendationChoice?: string;
+    perStatementAverages?: number[];
     trainerFutureSessionComment?: string;
     supervisorFutureSessionComment?: string;
     trainees?: { name: string; understanding: "Yes" | "No" | ""; independent: "Yes" | "No" | "" }[];
@@ -84,7 +85,7 @@ export type TrainingForm = {
     statementRatings?: (number | null)[];
   }[];
   supervisorReview?: {
-    decision: "Approve" | "Needs Changes" | "Reject";
+    decision: "Approve" | "Needs Changes";
     comments: string;
     actionItems: string[];
     dueDate?: string;
@@ -95,7 +96,7 @@ export type TrainingForm = {
     updatedAt: string;
   };
   supervisorReviewHistory?: {
-    decision: "Approve" | "Needs Changes" | "Reject";
+    decision: "Approve" | "Needs Changes";
     comments: string;
     actionItems: string[];
     dueDate?: string;

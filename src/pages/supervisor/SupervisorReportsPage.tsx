@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import { AlertTriangle, BadgeCheck, BarChart3, CheckCircle2, Lightbulb, Target, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { useAppStore } from "../../store/app-store";
@@ -37,7 +37,6 @@ export function SupervisorReportsPage() {
   const total = assignedForms.length;
   const approved = assignedForms.filter((f) => f.status === "Approved").length;
   const needsCorrection = assignedForms.filter((f) => f.status === "Needs Correction").length;
-  const rejected = assignedForms.filter((f) => f.status === "Rejected").length;
 
   const totalInvited = assignedForms.reduce((acc, f) => acc + f.trainees, 0);
   const totalResponses = assignedForms.reduce((acc, f) => acc + f.feedbackResponses, 0);
@@ -144,8 +143,7 @@ export function SupervisorReportsPage() {
         const riskPoints =
           (form.averageScore < 4 ? 2 : 0) +
           (rr < 60 ? 2 : rr < 75 ? 1 : 0) +
-          (form.status === "Needs Correction" ? 2 : 0) +
-          (form.status === "Rejected" ? 3 : 0);
+          (form.status === "Needs Correction" ? 3 : 0);
         return {
           id: form.id,
           title: form.title,
@@ -170,7 +168,7 @@ export function SupervisorReportsPage() {
       const row = byTrainer.get(id)!;
       row.forms += 1;
       row.avg += form.averageScore;
-      if (["Needs Correction", "Rejected"].includes(form.status)) row.corrections += 1;
+      if (["Needs Correction"].includes(form.status)) row.corrections += 1;
       row.responses += form.feedbackResponses;
       row.invited += form.trainees;
     });
@@ -296,13 +294,13 @@ export function SupervisorReportsPage() {
                 </div>
 
                 <div className="mt-1 flex items-center justify-between text-slate-600">
-                  <span>Reviewed (Signed Off + Rejected + Needs Correction)</span>
-                  <span className="font-semibold text-slate-800">{approved + rejected + needsCorrection}</span>
+                  <span>Reviewed (Signed Off + Needs Correction)</span>
+                  <span className="font-semibold text-slate-800">{approved + needsCorrection}</span>
                 </div>
                 <div className="h-2 rounded-full bg-slate-200">
                   <div
                     className="h-2 rounded-full bg-blue-600"
-                    style={{ width: `${pct(approved + rejected + needsCorrection, total)}%` }}
+                    style={{ width: `${pct(approved + needsCorrection, total)}%` }}
                   />
                 </div>
 
@@ -319,12 +317,12 @@ export function SupervisorReportsPage() {
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="rounded-lg border border-slate-100 bg-white p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Throughput</p>
-                <p className="mt-1 text-xl font-bold text-slate-900">{pct(approved + rejected + needsCorrection, total)}%</p>
+                <p className="mt-1 text-xl font-bold text-slate-900">{pct(approved + needsCorrection, total)}%</p>
                 <p className="text-xs text-slate-500">of forms have completed review cycle</p>
               </div>
               <div className="rounded-lg border border-slate-100 bg-white p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Approval Yield</p>
-                <p className="mt-1 text-xl font-bold text-slate-900">{pct(approved, approved + rejected + needsCorrection)}%</p>
+                <p className="mt-1 text-xl font-bold text-slate-900">{pct(approved, approved + needsCorrection)}%</p>
                 <p className="text-xs text-slate-500">signed off out of reviewed forms</p>
               </div>
             </div>
@@ -378,9 +376,7 @@ export function SupervisorReportsPage() {
                               ? "bg-emerald-100 text-emerald-700"
                               : t.status === "Needs Correction"
                                 ? "bg-rose-100 text-rose-700"
-                                : t.status === "Rejected"
-                                  ? "bg-red-100 text-red-700"
-                                  : "bg-amber-100 text-amber-700"
+                                : "bg-amber-100 text-amber-700"
                           }`}
                         >
                           {t.status}
@@ -416,7 +412,7 @@ export function SupervisorReportsPage() {
                 ) : (
                   strongestTrainings.map((t) => (
                     <p key={t.id} className="text-emerald-800">
-                      <span className="font-semibold">{t.title}</span> • {t.trainer} • {t.averageScore.toFixed(1)}/5 • {t.responseRate}% response
+                      <span className="font-semibold">{t.title}</span> â€¢ {t.trainer} â€¢ {t.averageScore.toFixed(1)}/5 â€¢ {t.responseRate}% response
                     </p>
                   ))
                 )}
@@ -433,7 +429,7 @@ export function SupervisorReportsPage() {
                 ) : (
                   atRiskTrainings.map((t) => (
                     <p key={t.id} className="text-amber-800">
-                      <span className="font-semibold">{t.title}</span> • {t.trainer} • risk score {t.riskPoints} • {t.status}
+                      <span className="font-semibold">{t.title}</span> â€¢ {t.trainer} â€¢ risk score {t.riskPoints} â€¢ {t.status}
                     </p>
                   ))
                 )}
@@ -521,3 +517,5 @@ export function SupervisorReportsPage() {
     </div>
   );
 }
+
+

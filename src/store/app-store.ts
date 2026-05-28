@@ -362,7 +362,7 @@ const forms: TrainingForm[] = [
     trainees: 14,
     feedbackResponses: 10,
     averageScore: 3.2,
-    status: "Rejected",
+    status: "Needs Correction",
     recommendation: "Rework required",
     createdAt: "2026-05-08",
     submittedData: {
@@ -395,7 +395,7 @@ const forms: TrainingForm[] = [
       traineeRoster: [{ name: "Trainee 1", departmentOrRole: "Support Agent", attendance: "Yes" }]
     },
     supervisorReview: {
-      decision: "Reject",
+      decision: "Needs Changes",
       comments: "Material must be reworked before rerun. Not enough practical relevance.",
       actionItems: ["Rewrite examples with real ticket data", "Increase practical simulation time"],
       dueDate: "2026-06-01",
@@ -443,7 +443,7 @@ type AppState = {
   }) => boolean;
   saveSupervisorReviewDraft: (payload: {
     formId: string;
-    decision: "Approve" | "Needs Changes" | "Reject";
+    decision: "Approve" | "Needs Changes";
     comments: string;
     actionItems: string[];
     dueDate?: string;
@@ -452,7 +452,7 @@ type AppState = {
   }) => boolean;
   submitSupervisorReview: (payload: {
     formId: string;
-    decision: "Approve" | "Needs Changes" | "Reject";
+    decision: "Approve" | "Needs Changes";
     comments: string;
     actionItems: string[];
     dueDate?: string;
@@ -569,6 +569,7 @@ export const useAppStore = create<AppState>()(
         const now = new Date().toISOString();
         const target = get().forms.find((form) => form.id === payload.formId);
         if (!target) return false;
+        if (payload.decision === "Needs Changes" && !payload.comments.trim()) return false;
         const review = {
           decision: payload.decision,
           comments: payload.comments,
@@ -597,6 +598,7 @@ export const useAppStore = create<AppState>()(
         const now = new Date().toISOString();
         const target = get().forms.find((form) => form.id === payload.formId);
         if (!target) return false;
+        if (payload.decision === "Needs Changes" && !payload.comments.trim()) return false;
         const review = {
           decision: payload.decision,
           comments: payload.comments,
@@ -608,12 +610,7 @@ export const useAppStore = create<AppState>()(
           submittedBy: payload.reviewerName,
           updatedAt: now
         };
-        const nextStatus =
-          payload.decision === "Approve"
-            ? "Approved"
-            : payload.decision === "Needs Changes"
-              ? "Needs Correction"
-              : "Rejected";
+        const nextStatus = payload.decision === "Approve" ? "Approved" : "Needs Correction";
         set({
           forms: get().forms.map((form) =>
             form.id === payload.formId

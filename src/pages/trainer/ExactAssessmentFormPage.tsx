@@ -239,10 +239,24 @@ function SignaturePad({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isDrawingRef = useRef(false);
   const pointerIdRef = useRef<number | null>(null);
-  const [uploadedSignature, setUploadedSignature] = useState<string | null>(null);
+  const lastSyncedImageRef = useRef<string>("");
 
   useEffect(() => {
-    setUploadedSignature(valueImage ?? null);
+    if (isDrawingRef.current) return;
+    const incoming = valueImage ?? "";
+    if (!incoming || incoming === lastSyncedImageRef.current) return;
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    const img = new Image();
+    img.onload = () => {
+      const cssWidth = canvas.clientWidth || 1;
+      const cssHeight = canvas.clientHeight || 1;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(img, 0, 0, cssWidth, cssHeight);
+      lastSyncedImageRef.current = incoming;
+    };
+    img.src = incoming;
   }, [valueImage]);
 
   useEffect(() => {
@@ -300,8 +314,6 @@ function SignaturePad({
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
-    if (uploadedSignature) setUploadedSignature(null);
-
     event.preventDefault();
     canvas.setPointerCapture(event.pointerId);
     pointerIdRef.current = event.pointerId;
@@ -335,7 +347,9 @@ function SignaturePad({
     pointerIdRef.current = null;
     const canvas = canvasRef.current;
     if (canvas) {
-      onImageChange?.(canvas.toDataURL("image/png"));
+      const data = canvas.toDataURL("image/png");
+      lastSyncedImageRef.current = data;
+      onImageChange?.(data);
     }
   };
 
@@ -345,7 +359,7 @@ function SignaturePad({
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
-    setUploadedSignature(null);
+    lastSyncedImageRef.current = "";
     onImageChange?.(null);
     onSignedChange?.(false);
   };
@@ -363,9 +377,22 @@ function SignaturePad({
 
       const canvas = canvasRef.current;
       const context = canvas?.getContext("2d");
-      if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height);
-
-      setUploadedSignature(result);
+      if (canvas && context) {
+        const img = new Image();
+        img.onload = () => {
+          const cssWidth = canvas.clientWidth || 1;
+          const cssHeight = canvas.clientHeight || 1;
+          context.clearRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(img, 0, 0, cssWidth, cssHeight);
+          const imageFromCanvas = canvas.toDataURL("image/png");
+          lastSyncedImageRef.current = imageFromCanvas;
+          onImageChange?.(imageFromCanvas);
+          onSignedChange?.(true);
+        };
+        img.src = result;
+        return;
+      }
+      lastSyncedImageRef.current = result;
       onImageChange?.(result);
       onSignedChange?.(true);
     };
@@ -375,15 +402,6 @@ function SignaturePad({
   return (
     <div className="space-y-1">
       <p className="text-xs text-slate-500">{label}</p>
-      {uploadedSignature ? (
-        <div className="rounded-lg border border-brand-line bg-white p-2">
-          <img
-            src={uploadedSignature}
-            alt={`${label} uploaded signature`}
-            className="h-16 w-full rounded object-contain"
-          />
-        </div>
-      ) : null}
       <div ref={containerRef} className="rounded-lg border border-brand-line bg-white">
         <canvas
           title={label}
@@ -444,6 +462,7 @@ type TrainerDraft = {
   observedImprovement: YesNo;
   trainingFormats: string[];
   targetUserGroup: string;
+  followUpSupervisorName: string;
   applicationExtent: string;
   observedImprovementDetails: string;
   supportNeeded: string;
@@ -473,6 +492,7 @@ type TrainerDraft = {
 
 export function ExactAssessmentFormPage({ readOnly = false, submittedData, reviewFormId }: ExactAssessmentFormPageProps) {
   const addForm = useAppStore((s) => s.addForm);
+  const submitSupervisorReview = useAppStore((s) => s.submitSupervisorReview);
   const forms = useAppStore((s) => s.forms);
   const users = useAppStore((s) => s.users);
   const currentUser = useAppStore((s) => s.currentUser);
@@ -494,6 +514,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   const [observedImprovement, setObservedImprovement] = useState<YesNo>(submittedData?.observedImprovement ?? "");
   const [trainingFormats, setTrainingFormats] = useState<string[]>(submittedData?.trainingFormats ?? []);
   const [targetUserGroup, setTargetUserGroup] = useState(submittedData?.targetUserGroup ?? "");
+  const [followUpSupervisorName, setFollowUpSupervisorName] = useState(
+    submittedData?.followUpSupervisorName ?? submittedData?.signOff?.supervisorName ?? ""
+  );
   const [applicationExtent, setApplicationExtent] = useState(submittedData?.applicationExtent ?? "");
   const [observedImprovementDetails, setObservedImprovementDetails] = useState(submittedData?.observedImprovementDetails ?? "");
   const [supportNeeded, setSupportNeeded] = useState(submittedData?.supportNeeded ?? "");
@@ -526,6 +549,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     title: "",
     message: ""
   });
+  const [supervisorReturnReason, setSupervisorReturnReason] = useState("");
+  const [supervisorActionError, setSupervisorActionError] = useState("");
 
   const [ratings, setRatings] = useState<(number | null)[]>(Array(feedbackStatements.length).fill(null));
   const [traineeRoster, setTraineeRoster] = useState<TraineeRosterItem[]>(
@@ -552,6 +577,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     const passed = evaluated.filter((t) => t.understanding === "Yes" && t.independent === "Yes").length;
     return `${passed} / ${evaluated.length} trainees`;
   }, [trainees]);
+
 
   const integrityLinkedFeedbackCount = useMemo(() => {
     const targetId = distributedFormId ?? reviewFormId ?? null;
@@ -671,6 +697,29 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     [forms, effectiveDistributedFormId]
   );
 
+  const statementAveragesFromFeedback = useMemo(() => {
+    const feedback = linkedForm?.supervisorOnlyFeedback ?? [];
+    if (feedback.length === 0) return [] as number[];
+    const totals = Array(feedbackStatements.length).fill(0);
+    const counts = Array(feedbackStatements.length).fill(0);
+    feedback.forEach((entry) => {
+      entry.statementRatings?.forEach((rating, index) => {
+        if (typeof rating === "number") {
+          totals[index] += rating;
+          counts[index] += 1;
+        }
+      });
+    });
+    return totals.map((total, index) => (counts[index] > 0 ? Number((total / counts[index]).toFixed(2)) : 0));
+  }, [linkedForm?.supervisorOnlyFeedback]);
+
+  const statementAveragesForDisplay = useMemo(() => {
+    const fromSubmitted = submittedData?.perStatementAverages ?? [];
+    if (fromSubmitted.length === feedbackStatements.length) return fromSubmitted;
+    if (statementAveragesFromFeedback.length === feedbackStatements.length) return statementAveragesFromFeedback;
+    return [] as number[];
+  }, [submittedData?.perStatementAverages, statementAveragesFromFeedback]);
+
   const submittedTraineeNameSet = useMemo(() => {
     const names = (linkedForm?.supervisorOnlyFeedback ?? [])
       .map((entry) => normalizeTraineeKey(entry.traineeName || ""))
@@ -745,6 +794,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       setObservedImprovement(parsed.observedImprovement ?? "");
       setTrainingFormats(parsed.trainingFormats ?? []);
       setTargetUserGroup(parsed.targetUserGroup ?? "");
+      setFollowUpSupervisorName(parsed.followUpSupervisorName ?? "");
       setApplicationExtent(parsed.applicationExtent ?? "");
       setObservedImprovementDetails(parsed.observedImprovementDetails ?? "");
       setSupportNeeded(parsed.supportNeeded ?? "");
@@ -801,6 +851,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         (parsed.barriersComment?.trim().length ?? 0) > 0 ||
         (parsed.workedWellComment?.trim().length ?? 0) > 0 ||
         (parsed.trainingFormats?.length ?? 0) > 0 ||
+        (parsed.followUpSupervisorName?.trim().length ?? 0) > 0 ||
         (parsed.applicationExtent?.trim().length ?? 0) > 0 ||
         (parsed.supportNeeded?.trim().length ?? 0) > 0 ||
         (parsed.effectivenessRating?.trim().length ?? 0) > 0 ||
@@ -839,6 +890,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     setObservedImprovement(saved.observedImprovement ?? "");
     setTrainingFormats(saved.trainingFormats ?? []);
     setTargetUserGroup(saved.targetUserGroup ?? "");
+    setFollowUpSupervisorName(saved.followUpSupervisorName ?? saved.signOff?.supervisorName ?? "");
     setApplicationExtent(saved.applicationExtent ?? "");
     setObservedImprovementDetails(saved.observedImprovementDetails ?? "");
     setSupportNeeded(saved.supportNeeded ?? "");
@@ -885,6 +937,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       observedImprovement,
       trainingFormats,
       targetUserGroup,
+      followUpSupervisorName,
       applicationExtent,
       observedImprovementDetails,
       supportNeeded,
@@ -913,6 +966,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       observedImprovement !== "" ||
       trainingFormats.length > 0 ||
       targetUserGroup.trim().length > 0 ||
+      followUpSupervisorName.trim().length > 0 ||
       applicationExtent.trim().length > 0 ||
       observedImprovementDetails.trim().length > 0 ||
       supportNeeded.trim().length > 0 ||
@@ -957,6 +1011,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     observedImprovement,
     trainingFormats,
     targetUserGroup,
+    followUpSupervisorName,
     applicationExtent,
     observedImprovementDetails,
     supportNeeded,
@@ -1140,6 +1195,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           observedImprovement,
           trainingFormats,
           targetUserGroup,
+          followUpSupervisorName,
           applicationExtent,
           observedImprovementDetails,
           supportNeeded,
@@ -1234,6 +1290,11 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           observedImprovement,
           trainingFormats,
           targetUserGroup,
+          followUpSupervisorName,
+          perStatementAverages:
+            (existingForm?.supervisorOnlyFeedback?.length ?? 0) > 0
+              ? statementAveragesFromFeedback
+              : ratings.map((score) => (typeof score === "number" ? Number(score.toFixed(2)) : 0)),
           applicationExtent,
           observedImprovementDetails,
           supportNeeded,
@@ -1271,6 +1332,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       setObservedImprovement("");
       setTrainingFormats([]);
       setTargetUserGroup("");
+      setFollowUpSupervisorName("");
       setApplicationExtent("");
       setObservedImprovementDetails("");
       setSupportNeeded("");
@@ -1310,6 +1372,16 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         });
         return;
       }
+      setSupervisorActionError("");
+      const reviewerName = currentUser?.name || currentUser?.email || "Supervisor";
+      submitSupervisorReview({
+        formId: linkedForm.id,
+        decision: "Approve",
+        comments: supervisorFutureSessionComment.trim() || "Approved by supervisor.",
+        actionItems: [],
+        sectionFeedback: [],
+        reviewerName
+      });
       addForm({
         ...linkedForm,
         status: "Approved",
@@ -1327,6 +1399,11 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           observedImprovement,
           trainingFormats,
           targetUserGroup,
+          followUpSupervisorName,
+          perStatementAverages:
+            (linkedForm?.supervisorOnlyFeedback?.length ?? 0) > 0
+              ? statementAveragesFromFeedback
+              : ratings.map((score) => (typeof score === "number" ? Number(score.toFixed(2)) : 0)),
           applicationExtent,
           observedImprovementDetails,
           supportNeeded,
@@ -1356,6 +1433,81 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       kind: "success",
       title: "Feedback Submitted",
       message: "Trainee feedback has been submitted successfully."
+    });
+  };
+
+  const handleReturnForChanges = () => {
+    if (userRole !== "supervisor") return;
+    if (!linkedForm) {
+      setSubmitModal({
+        open: true,
+        kind: "error",
+        title: "No Form Linked",
+        message: "Unable to locate the trainer form for supervisor review."
+      });
+      return;
+    }
+    const reason = supervisorReturnReason.trim() || supervisorFutureSessionComment.trim();
+    if (!reason) {
+      setSupervisorActionError("Please provide a reason before returning this form for changes.");
+      return;
+    }
+    setSupervisorActionError("");
+    const reviewerName = currentUser?.name || currentUser?.email || "Supervisor";
+    const ok = submitSupervisorReview({
+      formId: linkedForm.id,
+      decision: "Needs Changes",
+      comments: reason,
+      actionItems: [],
+      sectionFeedback: [],
+      reviewerName
+    });
+    if (!ok) {
+      setSupervisorActionError("Unable to return form. Please add a clear reason and try again.");
+      return;
+    }
+    addForm({
+      ...linkedForm,
+      status: "Needs Correction",
+      submittedData: {
+        trainerName,
+        trainerDepartment,
+        trainingTitle,
+        trainingDate,
+        durationDays: trainingDurationDays,
+        durationHours: trainingDurationHours,
+        numberOfTrainees,
+        objectives,
+        passRate: autoPassRate || "-",
+        averageScoreDisplay: autoAverageScore || "-",
+        observedImprovement,
+        trainingFormats,
+        targetUserGroup,
+        followUpSupervisorName,
+        perStatementAverages:
+          (linkedForm?.supervisorOnlyFeedback?.length ?? 0) > 0
+            ? statementAveragesFromFeedback
+            : ratings.map((score) => (typeof score === "number" ? Number(score.toFixed(2)) : 0)),
+        applicationExtent,
+        observedImprovementDetails,
+        supportNeeded,
+        barriersComment,
+        workedWellComment,
+        effectivenessRating,
+        recommendationChoice,
+        trainerFutureSessionComment,
+        supervisorFutureSessionComment,
+        trainees,
+        signatures,
+        signOff,
+        traineeRoster
+      }
+    });
+    setSubmitModal({
+      open: true,
+      kind: "success",
+      title: "Returned For Changes",
+      message: "The form has been returned to trainer with your reason."
     });
   };
 
@@ -1831,6 +1983,21 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
             <div className="mt-4 max-w-md">
               <TextInput label="Average Score (auto-calculated)" value={autoAverageScore || "-"} readOnly />
             </div>
+            {statementAveragesForDisplay.length === feedbackStatements.length ? (
+              <div className="mt-4 rounded-xl border border-brand-line bg-slate-50 p-4">
+                <p className="mb-2 text-sm font-semibold text-brand-ink">Per-statement Aggregate (out of 5)</p>
+                <div className="space-y-1.5">
+                  {feedbackStatements.map((statement, index) => (
+                    <div key={`agg-${index}`} className="flex items-start justify-between gap-3">
+                      <p className="text-xs text-slate-700">{statement}</p>
+                      <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-800">
+                        {statementAveragesForDisplay[index].toFixed(2)} / 5
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {isSupervisorReviewMode ? (
               <div className="mt-5 rounded-xl border border-brand-line bg-slate-50 p-4">
                 <div className="mb-3 flex items-center justify-between">
@@ -2094,6 +2261,12 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
               To be completed by trainer with input from supervisor/line manager, 2-4 weeks post-training.
             </p>
             <div className="space-y-5">
+              <TextInput
+                label="Supervisor Name"
+                value={followUpSupervisorName}
+                onChange={setFollowUpSupervisorName}
+                readOnly={isSupervisorReviewMode}
+              />
               <div>
                 <p className="mb-2 text-sm font-medium text-slate-700">To what extent have trainees applied the skills in the workplace?</p>
                 <div className="flex flex-wrap gap-4">
@@ -2339,6 +2512,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 </p>
               ) : null}
               <div className="flex items-center gap-2">
+              {isLastSection && userRole === "supervisor" ? (
+                <button
+                  type="button"
+                  onClick={handleReturnForChanges}
+                  className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
+                >
+                  Return for Changes
+                </button>
+              ) : null}
               {isLastSection ? (
                 <button
                   type="button"
@@ -2361,6 +2543,23 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 </button>
               )}
               </div>
+              {isLastSection && userRole === "supervisor" ? (
+                <div className="mt-2 w-full max-w-xl">
+                  <textarea
+                    rows={2}
+                    value={supervisorReturnReason}
+                    onChange={(event) => {
+                      setSupervisorReturnReason(event.target.value);
+                      if (supervisorActionError) setSupervisorActionError("");
+                    }}
+                    placeholder="Reason for return (required)"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100"
+                  />
+                  {supervisorActionError ? (
+                    <p className="mt-1 text-xs font-medium text-rose-700">{supervisorActionError}</p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
