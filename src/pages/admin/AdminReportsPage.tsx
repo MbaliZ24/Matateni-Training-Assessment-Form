@@ -27,8 +27,17 @@ export function AdminReportsPage() {
 
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"All" | Status>("All");
+  const [department, setDepartment] = useState("All Departments");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   const trainersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
+  const departments = useMemo(
+    () => ["All Departments", ...Array.from(new Set(forms.map((f) => f.department))).sort()],
+    [forms]
+  );
 
   const filteredForms = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -38,6 +47,7 @@ export function AdminReportsPage() {
         trainersById[f.assignedSupervisorId ?? ""]?.name ||
         trainersById[f.assignedSupervisorId ?? ""]?.email ||
         "";
+
       const matchesQuery =
         q.length === 0 ||
         f.title.toLowerCase().includes(q) ||
@@ -46,9 +56,20 @@ export function AdminReportsPage() {
         supervisorName.toLowerCase().includes(q) ||
         f.department.toLowerCase().includes(q);
       const matchesStatus = status === "All" || f.status === status;
-      return matchesQuery && matchesStatus;
+      const matchesDepartment = department === "All Departments" || f.department === department;
+      const matchesFrom = !dateFrom || f.date >= dateFrom;
+      const matchesTo = !dateTo || f.date <= dateTo;
+
+      return matchesQuery && matchesStatus && matchesDepartment && matchesFrom && matchesTo;
     });
-  }, [forms, trainersById, query, status]);
+  }, [forms, trainersById, query, status, department, dateFrom, dateTo]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredForms.length / rowsPerPage));
+  const currentPage = Math.min(page, totalPages);
+  const pagedForms = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return filteredForms.slice(start, start + rowsPerPage);
+  }, [filteredForms, currentPage, rowsPerPage]);
 
   const metrics = useMemo(() => {
     const total = filteredForms.length;
@@ -133,19 +154,26 @@ export function AdminReportsPage() {
           <CardTitle>Report Explorer</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-2 md:grid-cols-[1fr_200px_auto]">
+          <div className="grid gap-2 lg:grid-cols-[1fr_180px_200px_160px_160px_auto]">
             <label className="relative block">
               <Input
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setPage(1);
+                }}
                 placeholder="Search by form, trainer, supervisor, or department..."
                 className="pr-9"
               />
               <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
             </label>
+
             <select
               value={status}
-              onChange={(event) => setStatus(event.target.value as "All" | Status)}
+              onChange={(event) => {
+                setStatus(event.target.value as "All" | Status);
+                setPage(1);
+              }}
               className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
             >
               {reportStatuses.map((item) => (
@@ -154,6 +182,25 @@ export function AdminReportsPage() {
                 </option>
               ))}
             </select>
+
+            <select
+              value={department}
+              onChange={(event) => {
+                setDepartment(event.target.value);
+                setPage(1);
+              }}
+              className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+            >
+              {departments.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+
+            <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} />
+            <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} />
+
             <Button type="button" variant="outline" onClick={exportReportCsv} className="gap-2">
               <Download className="size-4" />
               Export CSV
@@ -175,7 +222,7 @@ export function AdminReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredForms.map((f) => {
+                {pagedForms.map((f) => {
                   const trainer = trainersById[f.trainerId]?.name || trainersById[f.trainerId]?.email || "-";
                   const supervisor =
                     trainersById[f.assignedSupervisorId ?? ""]?.name ||
@@ -204,7 +251,7 @@ export function AdminReportsPage() {
                     </tr>
                   );
                 })}
-                {filteredForms.length === 0 ? (
+                {pagedForms.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
                       No report rows found.
@@ -213,6 +260,29 @@ export function AdminReportsPage() {
                 ) : null}
               </tbody>
             </table>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2">
+            <p className="text-xs text-slate-500">
+              Showing {(filteredForms.length === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1)} to {Math.min(currentPage * rowsPerPage, filteredForms.length)} of {filteredForms.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <select
+                value={rowsPerPage}
+                onChange={(event) => {
+                  setRowsPerPage(Number(event.target.value));
+                  setPage(1);
+                }}
+                className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs"
+              >
+                {[10, 20, 50].map((n) => (
+                  <option key={n} value={n}>{n} / page</option>
+                ))}
+              </select>
+              <Button size="sm" variant="outline" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+              <span className="text-xs text-slate-600">{currentPage} / {totalPages}</span>
+              <Button size="sm" variant="outline" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+            </div>
           </div>
         </CardContent>
       </Card>

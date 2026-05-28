@@ -38,9 +38,23 @@ const navByRole: Record<Role, { to: string; label: string; icon: React.Component
   ]
 };
 
-export function Sidebar({ role, onLogout }: { role: Role; onLogout?: () => void }) {
+export function Sidebar({
+  role,
+  onLogout,
+  mobile = false
+}: {
+  role: Role;
+  onLogout?: () => void;
+  mobile?: boolean;
+}) {
   return (
-    <aside className="sticky top-0 h-screen w-72 shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-4">
+    <aside
+      className={
+        mobile
+          ? "h-[calc(100vh-56px)] w-full overflow-y-auto border-r border-slate-200 bg-white p-4"
+          : "sticky top-0 h-screen w-72 shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-4"
+      }
+    >
       <div className="mb-7 rounded-xl border border-slate-200 bg-slate-50 p-3">
         <img src="/matateni-logo.png" alt="Matateni" className="h-12 w-full object-contain object-left" />
       </div>

@@ -54,7 +54,7 @@ export function TrainerSubmissionsPage() {
                   <tr key={form.id} className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="px-4 py-2.5 font-mono text-xs text-slate-700">{form.id}</td>
                     <td className="px-4 py-2.5 font-medium text-slate-800">{form.title}</td>
-                    <td className="px-4 py-2.5 text-slate-700">{form.createdAt}</td>
+                    <td className="px-4 py-2.5 text-slate-700">{form.submittedAt || form.createdAt}</td>
                     <td className="px-4 py-2.5 text-slate-700">{supervisorName(form.assignedSupervisorId)}</td>
                     <td className="px-4 py-2.5">
                       <StatusBadge status={form.status} />

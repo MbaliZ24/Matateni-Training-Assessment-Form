@@ -225,10 +225,14 @@ function YesNoGroup({
 function SignaturePad({
   label,
   onSignedChange,
+  valueImage,
+  onImageChange,
   disabled = false
 }: {
   label: string;
   onSignedChange?: (isSigned: boolean) => void;
+  valueImage?: string;
+  onImageChange?: (image: string | null) => void;
   disabled?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -236,6 +240,10 @@ function SignaturePad({
   const isDrawingRef = useRef(false);
   const pointerIdRef = useRef<number | null>(null);
   const [uploadedSignature, setUploadedSignature] = useState<string | null>(null);
+
+  useEffect(() => {
+    setUploadedSignature(valueImage ?? null);
+  }, [valueImage]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -325,6 +333,10 @@ function SignaturePad({
     if (pointerIdRef.current !== null && event.pointerId !== pointerIdRef.current) return;
     isDrawingRef.current = false;
     pointerIdRef.current = null;
+    const canvas = canvasRef.current;
+    if (canvas) {
+      onImageChange?.(canvas.toDataURL("image/png"));
+    }
   };
 
   const clearSignature = () => {
@@ -334,6 +346,7 @@ function SignaturePad({
     if (!canvas || !context) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
     setUploadedSignature(null);
+    onImageChange?.(null);
     onSignedChange?.(false);
   };
 
@@ -353,6 +366,7 @@ function SignaturePad({
       if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height);
 
       setUploadedSignature(result);
+      onImageChange?.(result);
       onSignedChange?.(true);
     };
     reader.readAsDataURL(file);
@@ -439,7 +453,12 @@ type TrainerDraft = {
   recommendationChoice: string;
   trainerFutureSessionComment: string;
   supervisorFutureSessionComment: string;
-  signatures: { trainer: boolean; supervisor: boolean };
+  signatures: {
+    trainer: boolean;
+    supervisor: boolean;
+    trainerImage?: string;
+    supervisorImage?: string;
+  };
   signOff: {
     trainerName: string;
     trainerDate: string;
@@ -454,7 +473,6 @@ type TrainerDraft = {
 
 export function ExactAssessmentFormPage({ readOnly = false, submittedData, reviewFormId }: ExactAssessmentFormPageProps) {
   const addForm = useAppStore((s) => s.addForm);
-  const updateFormStatus = useAppStore((s) => s.updateFormStatus);
   const forms = useAppStore((s) => s.forms);
   const users = useAppStore((s) => s.users);
   const currentUser = useAppStore((s) => s.currentUser);
@@ -493,7 +511,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   });
   const [signatures, setSignatures] = useState({
     trainer: submittedData?.signatures?.trainer ?? false,
-    supervisor: submittedData?.signatures?.supervisor ?? false
+    supervisor: submittedData?.signatures?.supervisor ?? false,
+    trainerImage: submittedData?.signatures?.trainerImage ?? "",
+    supervisorImage: submittedData?.signatures?.supervisorImage ?? ""
   });
   const [submitModal, setSubmitModal] = useState<{
     open: boolean;
@@ -734,7 +754,16 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       setRecommendationChoice(parsed.recommendationChoice ?? "");
       setTrainerFutureSessionComment(parsed.trainerFutureSessionComment ?? "");
       setSupervisorFutureSessionComment(parsed.supervisorFutureSessionComment ?? "");
-      setSignatures(parsed.signatures ?? { trainer: false, supervisor: false });
+      setSignatures(
+        parsed.signatures
+          ? {
+              trainer: parsed.signatures.trainer ?? false,
+              supervisor: parsed.signatures.supervisor ?? false,
+              trainerImage: parsed.signatures.trainerImage ?? "",
+              supervisorImage: parsed.signatures.supervisorImage ?? ""
+            }
+          : { trainer: false, supervisor: false, trainerImage: "", supervisorImage: "" }
+      );
       setSignOff(
         parsed.signOff ?? {
           trainerName: currentUser?.name ?? "",
@@ -820,7 +849,16 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     setTrainerFutureSessionComment(saved.trainerFutureSessionComment ?? "");
     setSupervisorFutureSessionComment(saved.supervisorFutureSessionComment ?? "");
     setTrainees(saved.trainees?.length ? saved.trainees : [createEmptyTrainee()]);
-    setSignatures(saved.signatures ?? { trainer: false, supervisor: false });
+    setSignatures(
+      saved.signatures
+        ? {
+            trainer: saved.signatures.trainer ?? false,
+            supervisor: saved.signatures.supervisor ?? false,
+            trainerImage: saved.signatures.trainerImage ?? "",
+            supervisorImage: saved.signatures.supervisorImage ?? ""
+          }
+        : { trainer: false, supervisor: false, trainerImage: "", supervisorImage: "" }
+    );
     setSignOff({
       trainerName: saved.signOff?.trainerName ?? currentUser?.name ?? "",
       trainerDate: saved.signOff?.trainerDate ?? "",
@@ -1181,6 +1219,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         status: "Submitted",
         recommendation: "Pending supervisor review",
         createdAt: existingForm?.createdAt ?? new Date().toISOString().slice(0, 10),
+        submittedAt: new Date().toISOString().slice(0, 10),
         submittedData: {
           trainerName,
           trainerDepartment,
@@ -1244,7 +1283,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       setRatings(Array(feedbackStatements.length).fill(null));
       setTraineeRoster([createEmptyRosterItem()]);
       setTrainees([createEmptyTrainee()]);
-      setSignatures({ trainer: false, supervisor: false });
+      setSignatures({ trainer: false, supervisor: false, trainerImage: "", supervisorImage: "" });
       setSignOff({
         trainerName: currentUser?.name ?? "",
         trainerDate: "",
@@ -1271,7 +1310,38 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         });
         return;
       }
-      updateFormStatus(linkedForm.id, "Approved");
+      addForm({
+        ...linkedForm,
+        status: "Approved",
+        submittedData: {
+          trainerName,
+          trainerDepartment,
+          trainingTitle,
+          trainingDate,
+          durationDays: trainingDurationDays,
+          durationHours: trainingDurationHours,
+          numberOfTrainees,
+          objectives,
+          passRate: autoPassRate || "-",
+          averageScoreDisplay: autoAverageScore || "-",
+          observedImprovement,
+          trainingFormats,
+          targetUserGroup,
+          applicationExtent,
+          observedImprovementDetails,
+          supportNeeded,
+          barriersComment,
+          workedWellComment,
+          effectivenessRating,
+          recommendationChoice,
+          trainerFutureSessionComment,
+          supervisorFutureSessionComment,
+          trainees,
+          signatures,
+          signOff,
+          traineeRoster
+        }
+      });
       setSubmitModal({
         open: true,
         kind: "success",
@@ -1387,10 +1457,10 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
             </div>
           </div>
 
-          <div className="relative pt-1">
-            <div className="absolute left-0 right-0 top-4 h-[3px] rounded-full bg-slate-200" />
+          <div className="relative pt-0">
+            <div className="absolute left-0 right-0 top-[18px] h-[3px] rounded-full bg-slate-200" />
             <div
-              className="absolute left-0 top-4 h-[3px] rounded-full bg-slate-700 transition-all duration-300"
+              className="absolute left-0 top-[18px] h-[3px] rounded-full bg-slate-700 transition-all duration-300"
               style={{
                 width: `${visibleSections.length > 1 ? (visibleSectionIndex / (visibleSections.length - 1)) * 100 : 100}%`
               }}
@@ -1414,7 +1484,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                   key={section}
                   type="button"
                   onClick={() => setActiveSection(section)}
-                  className="group relative px-1 py-1.5 text-center transition"
+                  className="group relative px-1 pb-1.5 pt-0 text-center transition"
                 >
                   <span
                     className={`mx-auto mb-2 flex size-8 items-center justify-center rounded-full border text-sm font-bold transition md:size-9 ${
@@ -2190,6 +2260,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                     { role: "Trainer", key: "trainer" as const },
                     { role: "Supervisor / Training Coordinator", key: "supervisor" as const }
                   ].map(({ role, key }) => {
+                    const imageKey = key === "trainer" ? "trainerImage" : "supervisorImage";
                     const rowReadOnly =
                       (userRole === "supervisor" && key === "trainer") ||
                       (userRole === "trainer" && key === "supervisor");
@@ -2213,6 +2284,10 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                       <td className={tableCell}>
                         <SignaturePad
                           label={`${role} signature`}
+                          valueImage={signatures[imageKey]}
+                          onImageChange={(image) =>
+                            setSignatures((prev) => ({ ...prev, [imageKey]: image ?? "" }))
+                          }
                           disabled={rowReadOnly}
                           onSignedChange={(isSigned) =>
                             setSignatures((prev) => ({ ...prev, [key]: isSigned }))

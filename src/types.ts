@@ -19,6 +19,7 @@ export type User = {
   role: Role;
   department: string;
   supervisorId?: string;
+  isActive?: boolean;
 };
 
 export type TrainingForm = {
@@ -34,6 +35,7 @@ export type TrainingForm = {
   status: Status;
   recommendation: string;
   createdAt: string;
+  submittedAt?: string;
   submittedData?: {
     trainerName: string;
     trainerDepartment?: string;
@@ -58,7 +60,12 @@ export type TrainingForm = {
     trainerFutureSessionComment?: string;
     supervisorFutureSessionComment?: string;
     trainees?: { name: string; understanding: "Yes" | "No" | ""; independent: "Yes" | "No" | "" }[];
-    signatures?: { trainer: boolean; supervisor: boolean };
+    signatures?: {
+      trainer: boolean;
+      supervisor: boolean;
+      trainerImage?: string;
+      supervisorImage?: string;
+    };
     signOff?: {
       trainerName?: string;
       trainerDate?: string;

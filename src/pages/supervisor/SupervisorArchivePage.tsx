@@ -79,7 +79,9 @@ export function SupervisorArchivePage() {
                   <tr key={f.id} className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="px-5 py-3 font-medium text-slate-800">{f.title}</td>
                     <td className="px-5 py-3 text-slate-700">{f.date}</td>
-                    <td className="px-5 py-3 text-slate-700">{(f.supervisorReview?.updatedAt ?? "").slice(0, 10) || "-"}</td>
+                    <td className="px-5 py-3 text-slate-700">
+                      {(f.supervisorReview?.submittedAt ?? f.supervisorReview?.updatedAt ?? f.submittedAt ?? f.createdAt).slice(0, 10)}
+                    </td>
                     <td className="px-5 py-3">
                       <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusPill(f.status)}`}>
                         {statusLabel(f.status)}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Download, Eye, UserRoundCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { useAppStore } from "../../store/app-store";
@@ -125,7 +125,7 @@ export function TrainerFeedbackPage() {
       <section>
         <Card className="rounded-2xl border-slate-200 shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">Inbox</CardTitle>
+            <CardTitle className="text-base font-semibold">Supervisor Feedback</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2.5 pt-0">
             <div>
@@ -139,7 +139,7 @@ export function TrainerFeedbackPage() {
             </div>
             {feedbackForms.length === 0 ? <p className="text-sm text-slate-500">No supervisor feedback yet.</p> : null}
             {feedbackForms.length > 0 && visibleForms.length === 0 ? (
-              <p className="text-sm text-slate-500">No results for “{search}”.</p>
+              <p className="text-sm text-slate-500">No results for â€œ{search}â€.</p>
             ) : null}
             {visibleForms.map((form) => {
               const unread = !form.trainerFeedbackReadAt;
@@ -264,3 +264,4 @@ export function TrainerFeedbackPage() {
     </div>
   );
 }
+
