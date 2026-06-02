@@ -38,9 +38,9 @@ export function LoginPage() {
             <p className="mt-2 text-center text-lg text-slate-500">Sign in to your account to continue</p>
             <form
               className="mt-8 space-y-5"
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
-                const ok = login(email, password);
+                const ok = await login(email, password);
                 if (!ok) {
                   setError("Invalid credentials");
                   return;

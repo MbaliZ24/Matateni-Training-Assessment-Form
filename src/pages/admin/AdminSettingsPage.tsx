@@ -45,7 +45,7 @@ export function AdminSettingsPage() {
     );
   }, [users, search]);
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     setError("");
     if (!newUser.email.trim() || !newUser.password.trim() || !newUser.department.trim()) {
       setError("Email, password and department are required.");
@@ -56,7 +56,7 @@ export function AdminSettingsPage() {
       return;
     }
 
-    const ok = addUser({
+    const ok = await addUser({
       name: newUser.name,
       email: newUser.email,
       password: newUser.password,

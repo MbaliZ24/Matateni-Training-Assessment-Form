@@ -1,5 +1,6 @@
 ﻿// Primary training assessment workflow used by trainer and reused as read-only for supervisor review.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createTrainingSession, getTrainingSessionQrUrl, saveTrainerReport, submitTrainerReport } from "../../lib/api";
 import { useAppStore } from "../../store/app-store";
 import type { TrainingForm } from "../../types";
 
@@ -683,11 +684,16 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   }, [effectiveDistributedFormId]);
 
   const traineeQrUrl = useMemo(() => {
+    if (!effectiveDistributedFormId) return "";
+    const sessionId = Number(effectiveDistributedFormId.replace(/^F-/, ""));
+    if (Number.isFinite(sessionId) && sessionId > 0) {
+      return getTrainingSessionQrUrl(sessionId);
+    }
     if (!traineeFeedbackLink) return "";
     return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
       traineeFeedbackLink
     )}`;
-  }, [traineeFeedbackLink]);
+  }, [effectiveDistributedFormId, traineeFeedbackLink]);
 
   const linkedForm = useMemo(
     () =>
@@ -1222,7 +1228,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (readOnly && userRole !== "supervisor") return;
 
     if (userRole !== "supervisor" && !hasAnyFormInput()) {
@@ -1246,7 +1252,59 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         return;
       }
 
-      const newFormId = distributedFormId ?? `F-${Date.now()}`;
+      let trainingSessionId: number | null = null;
+      let trainerReportId: number | null = null;
+      try {
+        const result = await createTrainingSession({
+          TrainerId: Number(currentUser?.id.replace(/^u/, "")) || 1,
+          Title: trainingTitle || "Training Assessment",
+          Department: trainerDepartment,
+          TrainingDate: trainingDate || undefined,
+          DurationDays: Number(trainingDurationDays) || undefined,
+          DurationHours: Number(trainingDurationHours) || undefined,
+          NumberOfTrainees: Number(numberOfTrainees) || undefined,
+          TrainingFormat: trainingFormats,
+          TargetAudience: targetUserGroup,
+          Objectives: objectives.filter((item) => item.trim().length > 0)
+        });
+        trainingSessionId = result.sessionId;
+        const report = await saveTrainerReport({
+          TrainingSessionId: trainingSessionId,
+          TraineeAssessments: trainees.map((trainee) => ({
+            TraineeName: trainee.name || "Unnamed trainee",
+            DemonstratedUnderstanding: trainee.understanding === "Yes",
+            CanPerformIndependently: trainee.independent === "Yes",
+            Status:
+              trainee.understanding === "Yes" && trainee.independent === "Yes"
+                ? "Competent"
+                : "Needs Support"
+          })),
+          SkillApplicationLevel: applicationExtent,
+          PerformanceImproved: observedImprovement === "Yes",
+          SupportNeeded: supportNeeded,
+          Comments: barriersComment || null,
+          WhatWorkedWell: workedWellComment,
+          Improvements: trainerFutureSessionComment,
+          TrainerComment: trainerFutureSessionComment,
+          SupervisorComment: supervisorFutureSessionComment || null,
+          EffectivenessRating: effectivenessRating,
+          Recommendation: recommendationChoice,
+          TrainerName: trainerName || currentUser?.name || currentUser?.email || "Trainer",
+          TrainerSignature: signatures.trainerImage || (signatures.trainer ? "Signed" : "")
+        });
+        trainerReportId = report.id;
+        await submitTrainerReport(trainerReportId);
+      } catch (error) {
+        setSubmitModal({
+          open: true,
+          kind: "error",
+          title: "Submission Failed",
+          message: "Unable to save the training session to the backend. Please check your connection and try again."
+        });
+        return;
+      }
+
+      const newFormId = distributedFormId ?? (trainingSessionId ? `F-${trainingSessionId}` : `F-${Date.now()}`);
       const existingForm = forms.find((form) => form.id === newFormId);
       const computedAverageScore = Number(
         (

@@ -137,7 +137,7 @@ export function TraineeFeedbackPage() {
           <div className="flex flex-wrap items-center gap-3">
             <Button
               disabled={!targetForm}
-              onClick={() => {
+              onClick={async () => {
                 const selected = ratings.filter((score): score is number => score !== null);
                 const averageValue =
                   selected.length === 0
@@ -146,7 +146,7 @@ export function TraineeFeedbackPage() {
                         (selected.reduce((sum, score) => sum + score, 0) / selected.length).toFixed(1)
                       );
 
-                const ok = submitTraineeFeedback({
+                const ok = await submitTraineeFeedback({
                   formId,
                   traineeName: traineeName.trim(),
                   employeeId: employeeId.trim(),
