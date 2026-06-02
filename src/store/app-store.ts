@@ -165,6 +165,21 @@ export const useAppStore = create<AppState>()(
         const target = get().forms.find((form) => form.id === payload.formId);
         if (!target) return false;
 
+        // Mirror the page-level duplicate guard so repeated trainee submissions cannot be stored by bypassing the UI.
+        const normalize = (value: string) => value.trim().toLowerCase();
+        const submissionKey = payload.employeeId.trim()
+          ? `employee:${normalize(payload.employeeId)}`
+          : `name:${normalize(payload.traineeName)}|role:${normalize(payload.departmentRole)}`;
+        const alreadySubmitted = (target.supervisorOnlyFeedback ?? []).some((entry) => {
+          const existingKey =
+            entry.submissionKey ||
+            (entry.employeeId.trim()
+              ? `employee:${normalize(entry.employeeId)}`
+              : `name:${normalize(entry.traineeName)}|role:${normalize(entry.departmentRole)}`);
+          return existingKey === submissionKey;
+        });
+        if (alreadySubmitted) return false;
+
         const trainingSessionId = Number(payload.formId.replace(/^F-/, ""));
         if (Number.isFinite(trainingSessionId) && trainingSessionId > 0) {
           const answers = payload.statementRatings.map((rating, index) => ({
@@ -212,6 +227,7 @@ export const useAppStore = create<AppState>()(
               supervisorOnlyFeedback: [
                 ...(form.supervisorOnlyFeedback ?? []),
                 {
+                  submissionKey,
                   traineeName: payload.traineeName,
                   employeeId: payload.employeeId,
                   departmentRole: payload.departmentRole,

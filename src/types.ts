@@ -49,6 +49,7 @@ export type TrainingForm = {
     observedImprovement?: "Yes" | "No" | "";
     trainingFormats?: string[];
     targetUserGroup?: string;
+    feedbackDeadline?: string;
     followUpSupervisorName?: string;
     applicationExtent?: string;
     observedImprovementDetails?: string;
@@ -76,6 +77,7 @@ export type TrainingForm = {
     traineeRoster: { name: string; departmentOrRole: string; attendance: "Yes" | "No" | "" }[];
   };
   supervisorOnlyFeedback?: {
+    submissionKey?: string;
     traineeName: string;
     employeeId: string;
     departmentRole: string;

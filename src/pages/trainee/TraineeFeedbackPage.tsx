@@ -22,6 +22,7 @@ export function TraineeFeedbackPage() {
   const forms = useAppStore((s) => s.forms);
   const submitTraineeFeedback = useAppStore((s) => s.submitTraineeFeedback);
   const targetForm = forms.find((f) => f.id === formId);
+  const feedbackDeadline = targetForm?.submittedData?.feedbackDeadline ?? "";
   const [traineeName, setTraineeName] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [departmentRole, setDepartmentRole] = useState("");
@@ -30,6 +31,25 @@ export function TraineeFeedbackPage() {
   const [comments, setComments] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [showThanksModal, setShowThanksModal] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  const normalize = (value: string) => value.trim().toLowerCase();
+  // Prefer employee id when available, then fall back to name+role so duplicate submissions are blocked in the UI.
+  const submissionKey = employeeId.trim()
+    ? `employee:${normalize(employeeId)}`
+    : `name:${normalize(traineeName)}|role:${normalize(departmentRole)}`;
+  const hasAlreadySubmitted = useMemo(() => {
+    if (!targetForm) return false;
+    if (!traineeName.trim() && !employeeId.trim()) return false;
+    return (targetForm.supervisorOnlyFeedback ?? []).some((entry) => {
+      const existingKey =
+        entry.submissionKey ||
+        (entry.employeeId.trim()
+          ? `employee:${normalize(entry.employeeId)}`
+          : `name:${normalize(entry.traineeName)}|role:${normalize(entry.departmentRole)}`);
+      return existingKey === submissionKey;
+    });
+  }, [targetForm, traineeName, employeeId, departmentRole, submissionKey]);
 
   const averageScore = useMemo(() => {
     const selected = ratings.filter((score): score is number => score !== null);
@@ -37,6 +57,18 @@ export function TraineeFeedbackPage() {
     const avg = selected.reduce((sum, score) => sum + score, 0) / selected.length;
     return `${avg.toFixed(1)} / 5`;
   }, [ratings]);
+
+  const isDeadlineExpired = useMemo(() => {
+    if (!feedbackDeadline) return false;
+    const parsed = new Date(feedbackDeadline);
+    return !Number.isNaN(parsed.getTime()) && parsed.getTime() < Date.now();
+  }, [feedbackDeadline]);
+
+  const formattedDeadline = useMemo(() => {
+    if (!feedbackDeadline) return "";
+    const parsed = new Date(feedbackDeadline);
+    return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleString();
+  }, [feedbackDeadline]);
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-4 px-3 py-4 md:px-0 md:py-6">
@@ -48,26 +80,40 @@ export function TraineeFeedbackPage() {
           <div className="rounded-xl border border-brand-line bg-slate-50 p-4">
             <p className="mb-3 text-sm font-semibold text-brand-ink">Trainee Information</p>
             <p className="mb-3 text-xs text-slate-500">Training Form ID: {formId || "Missing formId in link"}</p>
+            {formattedDeadline ? (
+              <p className={`mb-3 text-xs font-medium ${isDeadlineExpired ? "text-red-700" : "text-slate-600"}`}>
+                Feedback deadline: {formattedDeadline}
+              </p>
+            ) : null}
             <div className="grid gap-3 md:grid-cols-2">
               <input
                 type="text"
                 placeholder="Trainee full name"
                 value={traineeName}
-                onChange={(e) => setTraineeName(e.target.value)}
+                onChange={(e) => {
+                  setTraineeName(e.target.value);
+                  if (submitError) setSubmitError("");
+                }}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
               />
               <input
                 type="text"
                 placeholder="Employee number / ID"
                 value={employeeId}
-                onChange={(e) => setEmployeeId(e.target.value)}
+                onChange={(e) => {
+                  setEmployeeId(e.target.value);
+                  if (submitError) setSubmitError("");
+                }}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
               />
               <input
                 type="text"
                 placeholder="Department / role"
                 value={departmentRole}
-                onChange={(e) => setDepartmentRole(e.target.value)}
+                onChange={(e) => {
+                  setDepartmentRole(e.target.value);
+                  if (submitError) setSubmitError("");
+                }}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
               />
               <input
@@ -136,8 +182,14 @@ export function TraineeFeedbackPage() {
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
-              disabled={!targetForm}
+              disabled={!targetForm || isDeadlineExpired || hasAlreadySubmitted}
               onClick={async () => {
+                setSubmitError("");
+                if (hasAlreadySubmitted) {
+                  setSubmitted(false);
+                  setSubmitError("This trainee has already submitted feedback for this training.");
+                  return;
+                }
                 const selected = ratings.filter((score): score is number => score !== null);
                 const averageValue =
                   selected.length === 0
@@ -167,6 +219,8 @@ export function TraineeFeedbackPage() {
                   setRatings(Array(feedbackStatements.length).fill(null));
                   setComments("");
                   setShowThanksModal(true);
+                } else {
+                  setSubmitError("This trainee has already submitted feedback for this training.");
                 }
               }}
               className="min-w-40"
@@ -174,6 +228,9 @@ export function TraineeFeedbackPage() {
               Submit Feedback
             </Button>
             {!targetForm ? <p className="text-sm text-red-700">Invalid or missing training link. Ask your trainer for the correct feedback link.</p> : null}
+            {targetForm && isDeadlineExpired ? <p className="text-sm text-red-700">This feedback window has closed. Please contact your trainer.</p> : null}
+            {targetForm && hasAlreadySubmitted ? <p className="text-sm text-red-700">This trainee has already submitted feedback for this training.</p> : null}
+            {submitError ? <p className="text-sm text-red-700">{submitError}</p> : null}
             {submitted ? <p className="text-sm text-emerald-700">Thank you. Your feedback was submitted.</p> : null}
           </div>
         </CardContent>

@@ -1,40 +1,37 @@
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAppStore } from "../../store/app-store";
+import { Link, useSearchParams } from "react-router-dom";
 import { ExactAssessmentFormPage } from "./ExactAssessmentFormPage";
+import { useAppStore } from "../../store/app-store";
 
 export function TrainerSubmissionViewPage() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const forms = useAppStore((s) => s.forms);
-  const currentUser = useAppStore((s) => s.currentUser);
-  const formIdFromQuery = searchParams.get("formId");
-
-  const target = formIdFromQuery
-    ? forms.find((f) => f.id === formIdFromQuery && f.trainerId === currentUser?.id)
-    : undefined;
+  const forms = useAppStore((state) => state.forms);
+  const formId = searchParams.get("formId");
+  const target = forms.find((form) => form.id === formId);
 
   if (!target) {
     return (
-      <div className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <h2 className="text-xl font-semibold text-slate-900">No Submission Selected</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Open <span className="font-medium">My Submissions</span>, then click <span className="font-medium">View</span>.
-        </p>
-        <button
-          type="button"
-          onClick={() => navigate("/trainer/submissions")}
-          className="mt-5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-        >
-          Go To My Submissions
-        </button>
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-700 shadow-sm">
+          <h1 className="text-2xl font-semibold text-slate-900">Submission not found</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            We could not find that trainer submission. Return to My Submissions and open it again.
+          </p>
+          <Link
+            to="/trainer/submissions"
+            className="mt-4 inline-flex items-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+          >
+            Back to My Submissions
+          </Link>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-5">
-      <ExactAssessmentFormPage readOnly submittedData={target.submittedData} reviewFormId={target.id} />
-    </div>
+    <ExactAssessmentFormPage
+      readOnly={target.status !== "Draft"}
+      reviewFormId={target.id}
+      submittedData={target.submittedData}
+    />
   );
 }
-

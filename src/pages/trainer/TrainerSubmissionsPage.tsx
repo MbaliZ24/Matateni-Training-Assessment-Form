@@ -35,7 +35,7 @@ export function TrainerSubmissionsPage() {
       <Card className="rounded-2xl border-slate-200 shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-lg font-semibold text-slate-900">My Submissions</CardTitle>
-          <p className="text-xs text-slate-500">Proof of submitted training assessments.</p>
+          <p className="text-xs text-slate-500">Drafts and submitted training assessments.</p>
         </CardHeader>
         <CardContent className="pt-0">
           <div className="overflow-x-auto rounded-xl border border-slate-100">
@@ -66,8 +66,8 @@ export function TrainerSubmissionsPage() {
                           type="button"
                           onClick={() => navigate(`/trainer/submissions/view?formId=${encodeURIComponent(form.id)}`)}
                           className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100"
-                          title="View details"
-                          aria-label="View details"
+                          title={form.status === "Draft" ? "Continue draft" : "View details"}
+                          aria-label={form.status === "Draft" ? "Continue draft" : "View details"}
                         >
                           <Eye className="size-4" />
                         </button>

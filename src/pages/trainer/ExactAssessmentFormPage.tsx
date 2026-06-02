@@ -1,10 +1,9 @@
 ﻿// Primary training assessment workflow used by trainer and reused as read-only for supervisor review.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { createTrainingSession, getTrainingSessionQrUrl, saveTrainerReport, submitTrainerReport } from "../../lib/api";
 import { useAppStore } from "../../store/app-store";
 import type { TrainingForm } from "../../types";
-
-const ratingScale = [1, 2, 3, 4, 5] as const;
 
 type YesNo = "Yes" | "No" | "";
 
@@ -43,10 +42,6 @@ function createEmptyRosterItem(): TraineeRosterItem {
     departmentOrRole: "",
     attendance: ""
   };
-}
-
-function normalizeTraineeKey(value: string) {
-  return value.trim().toLowerCase();
 }
 
 function Card({
@@ -440,7 +435,7 @@ function SignaturePad({
 }
 
 const tableCell = "border border-brand-line px-3 py-2";
-const sectionKeys = ["A", "B", "C", "D", "F", "G"] as const;
+const sectionKeys = ["A", "B", "D", "F", "G"] as const;
 type SectionKey = (typeof sectionKeys)[number];
 
 type ExactAssessmentFormPageProps = {
@@ -463,6 +458,7 @@ type TrainerDraft = {
   observedImprovement: YesNo;
   trainingFormats: string[];
   targetUserGroup: string;
+  feedbackDeadline: string;
   followUpSupervisorName: string;
   applicationExtent: string;
   observedImprovementDetails: string;
@@ -492,6 +488,7 @@ type TrainerDraft = {
 };
 
 export function ExactAssessmentFormPage({ readOnly = false, submittedData, reviewFormId }: ExactAssessmentFormPageProps) {
+  const navigate = useNavigate();
   const addForm = useAppStore((s) => s.addForm);
   const submitSupervisorReview = useAppStore((s) => s.submitSupervisorReview);
   const forms = useAppStore((s) => s.forms);
@@ -501,6 +498,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   type UserRole = "trainer" | "trainee" | "supervisor";
   const [activeSection, setActiveSection] = useState<SectionKey>("A");
   const [userRole] = useState<UserRole>(readOnly ? "supervisor" : "trainer");
+  // The create flow only captures A+B and hands the trainer off to My Submissions for the rest.
+  const isDraftSetupStage = userRole === "trainer" && !reviewFormId && !readOnly;
   const formRef = useRef<HTMLDivElement | null>(null);
   const [distributedFormId, setDistributedFormId] = useState<string | null>(null);
 
@@ -515,6 +514,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   const [observedImprovement, setObservedImprovement] = useState<YesNo>(submittedData?.observedImprovement ?? "");
   const [trainingFormats, setTrainingFormats] = useState<string[]>(submittedData?.trainingFormats ?? []);
   const [targetUserGroup, setTargetUserGroup] = useState(submittedData?.targetUserGroup ?? "");
+  const [feedbackDeadline, setFeedbackDeadline] = useState(submittedData?.feedbackDeadline ?? "");
   const [followUpSupervisorName, setFollowUpSupervisorName] = useState(
     submittedData?.followUpSupervisorName ?? submittedData?.signOff?.supervisorName ?? ""
   );
@@ -580,14 +580,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   }, [trainees]);
 
 
-  const integrityLinkedFeedbackCount = useMemo(() => {
-    const targetId = distributedFormId ?? reviewFormId ?? null;
-    if (!targetId) return 0;
-    const form = forms.find((entry) => entry.id === targetId);
-    return form?.supervisorOnlyFeedback?.length ?? 0;
-  }, [forms, distributedFormId, reviewFormId]);
-
   const submissionIntegrity = useMemo(() => {
+    // Final supervisor submission is stricter than draft saving: each trainer-owned section must be meaningfully completed.
+    const hasObjectiveContent = objectives.some((objective) => objective.trim().length > 0);
+    const hasEvaluatedTrainees = trainees.some(
+      (trainee) =>
+        trainee.name.trim().length > 0 &&
+        trainee.understanding !== "" &&
+        trainee.independent !== ""
+    );
     const checks = [
       {
         key: "A",
@@ -596,34 +597,40 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           trainerName.trim().length > 0 &&
           trainerDepartment.trim().length > 0 &&
           trainingTitle.trim().length > 0 &&
-          trainingDate.trim().length > 0
-      },
-      {
-        key: "C",
-        label: "Section C · Trainee Feedback",
-        ok: integrityLinkedFeedbackCount > 0
+          trainingDate.trim().length > 0 &&
+          numberOfTrainees.trim().length > 0 &&
+          hasObjectiveContent &&
+          trainingFormats.length > 0 &&
+          targetUserGroup.trim().length > 0 &&
+          feedbackDeadline.trim().length > 0
       },
       {
         key: "D",
         label: "Section D · Skills & Follow-up",
         ok:
-          trainees.some((t) => t.understanding !== "" || t.independent !== "") ||
-          applicationExtent.trim().length > 0 ||
-          supportNeeded.trim().length > 0 ||
-          barriersComment.trim().length > 0
+          hasEvaluatedTrainees &&
+          followUpSupervisorName.trim().length > 0 &&
+          applicationExtent.trim().length > 0 &&
+          observedImprovement !== "" &&
+          (observedImprovement === "No" || observedImprovementDetails.trim().length > 0) &&
+          supportNeeded.trim().length > 0
       },
       {
         key: "F",
         label: "Section F · Reflection",
         ok:
-          workedWellComment.trim().length > 0 ||
-          trainerFutureSessionComment.trim().length > 0 ||
-          supervisorFutureSessionComment.trim().length > 0
+          workedWellComment.trim().length > 0 &&
+          trainerFutureSessionComment.trim().length > 0 &&
+          effectivenessRating.trim().length > 0 &&
+          recommendationChoice.trim().length > 0
       },
       {
         key: "G",
         label: "Section G · Sign-off",
-        ok: signatures.trainer || signatures.supervisor
+        ok:
+          signOff.trainerName.trim().length > 0 &&
+          signOff.trainerDate.trim().length > 0 &&
+          signatures.trainer
       }
     ] as const;
 
@@ -637,7 +644,6 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     trainerDepartment,
     trainingTitle,
     trainingDate,
-    integrityLinkedFeedbackCount,
     trainees,
     applicationExtent,
     supportNeeded,
@@ -683,6 +689,12 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     return `${origin}/trainee-feedback?formId=${effectiveDistributedFormId}`;
   }, [effectiveDistributedFormId]);
 
+  const formattedFeedbackDeadline = useMemo(() => {
+    if (!feedbackDeadline) return "";
+    const parsed = new Date(feedbackDeadline);
+    return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleString();
+  }, [feedbackDeadline]);
+
   const traineeQrUrl = useMemo(() => {
     if (!effectiveDistributedFormId) return "";
     const sessionId = Number(effectiveDistributedFormId.replace(/^F-/, ""));
@@ -718,20 +730,6 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     });
     return totals.map((total, index) => (counts[index] > 0 ? Number((total / counts[index]).toFixed(2)) : 0));
   }, [linkedForm?.supervisorOnlyFeedback]);
-
-  const statementAveragesForDisplay = useMemo(() => {
-    const fromSubmitted = submittedData?.perStatementAverages ?? [];
-    if (fromSubmitted.length === feedbackStatements.length) return fromSubmitted;
-    if (statementAveragesFromFeedback.length === feedbackStatements.length) return statementAveragesFromFeedback;
-    return [] as number[];
-  }, [submittedData?.perStatementAverages, statementAveragesFromFeedback]);
-
-  const submittedTraineeNameSet = useMemo(() => {
-    const names = (linkedForm?.supervisorOnlyFeedback ?? [])
-      .map((entry) => normalizeTraineeKey(entry.traineeName || ""))
-      .filter((name) => name.length > 0);
-    return new Set(names);
-  }, [linkedForm]);
 
   const assignedSupervisor = useMemo(() => {
     const assignedId = currentUser?.supervisorId;
@@ -896,6 +894,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     setObservedImprovement(saved.observedImprovement ?? "");
     setTrainingFormats(saved.trainingFormats ?? []);
     setTargetUserGroup(saved.targetUserGroup ?? "");
+    setFeedbackDeadline(saved.feedbackDeadline ?? "");
     setFollowUpSupervisorName(saved.followUpSupervisorName ?? saved.signOff?.supervisorName ?? "");
     setApplicationExtent(saved.applicationExtent ?? "");
     setObservedImprovementDetails(saved.observedImprovementDetails ?? "");
@@ -943,6 +942,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       observedImprovement,
       trainingFormats,
       targetUserGroup,
+      feedbackDeadline,
       followUpSupervisorName,
       applicationExtent,
       observedImprovementDetails,
@@ -972,6 +972,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       observedImprovement !== "" ||
       trainingFormats.length > 0 ||
       targetUserGroup.trim().length > 0 ||
+      feedbackDeadline.trim().length > 0 ||
       followUpSupervisorName.trim().length > 0 ||
       applicationExtent.trim().length > 0 ||
       observedImprovementDetails.trim().length > 0 ||
@@ -1017,6 +1018,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     observedImprovement,
     trainingFormats,
     targetUserGroup,
+    feedbackDeadline,
     followUpSupervisorName,
     applicationExtent,
     observedImprovementDetails,
@@ -1091,28 +1093,20 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     });
   };
 
-  const toggleTrainingFormat = (value: string, checked: boolean) => {
-    setTrainingFormats((prev) => {
-      if (checked) return Array.from(new Set([...prev, value]));
-      return prev.filter((item) => item !== value);
-    });
-  };
-
   const sectionOwnership: Record<SectionKey, "Trainer" | "Trainee" | "Trainer + Trainee"> = {
     A: "Trainer",
     B: "Trainer",
-    C: "Trainee",
     D: "Trainer",
     F: "Trainer",
     G: "Trainer"
   };
 
   const visibleSections = sections.filter((section) => {
+    if (isDraftSetupStage) return section === "A";
     if (section === "B") return false;
     const owner = sectionOwnership[section];
-    if (userRole === "trainer") return section === "C" || owner === "Trainer" || owner === "Trainer + Trainee";
     if (userRole === "trainee") return owner === "Trainee" || owner === "Trainer + Trainee";
-    return section === "C" || owner === "Trainer" || owner === "Trainer + Trainee";
+    return owner === "Trainer" || owner === "Trainer + Trainee";
   });
   const isSupervisorReviewMode = readOnly || userRole === "supervisor";
 
@@ -1158,6 +1152,42 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     return hasFieldValue || signatures.trainer || signatures.supervisor;
   };
 
+  // Reuse one snapshot shape for draft saves and final trainer submission updates.
+  const buildSubmittedData = () => ({
+    trainerName,
+    trainerDepartment,
+    trainingTitle,
+    trainingDate,
+    durationDays: trainingDurationDays,
+    durationHours: trainingDurationHours,
+    numberOfTrainees,
+    objectives,
+    passRate: autoPassRate || "-",
+    averageScoreDisplay: autoAverageScore || "-",
+    observedImprovement,
+    trainingFormats,
+    targetUserGroup,
+    feedbackDeadline,
+    followUpSupervisorName,
+    perStatementAverages:
+      (linkedForm?.supervisorOnlyFeedback?.length ?? 0) > 0
+        ? statementAveragesFromFeedback
+        : ratings.map((score) => (typeof score === "number" ? Number(score.toFixed(2)) : 0)),
+    applicationExtent,
+    observedImprovementDetails,
+    supportNeeded,
+    barriersComment,
+    workedWellComment,
+    effectivenessRating,
+    recommendationChoice,
+    trainerFutureSessionComment,
+    supervisorFutureSessionComment,
+    trainees,
+    signatures,
+    signOff,
+    traineeRoster
+  });
+
   const handleDistributeTraineeQr = () => {
     if (readOnly || userRole !== "trainer") return;
 
@@ -1172,59 +1202,32 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       return;
     }
 
-    const formId = distributedFormId ?? `F-${Date.now()}`;
-    if (!distributedFormId) {
-      addForm({
-        id: formId,
-        title: trainingTitle || "Training Assessment",
-        trainerId: currentUser?.id ?? "u1",
-        assignedSupervisorId: currentUser?.supervisorId,
-        department: trainerDepartment || currentUser?.department || "Operations",
-        date: trainingDate || new Date().toISOString().slice(0, 10),
-        trainees: Number(numberOfTrainees) || traineeRoster.length || 0,
-        feedbackResponses: 0,
-        averageScore: 0,
-        status: "Draft",
-        recommendation: "Draft in progress",
-        createdAt: new Date().toISOString().slice(0, 10),
-        submittedData: {
-          trainerName,
-          trainerDepartment,
-          trainingTitle,
-          trainingDate,
-          durationDays: trainingDurationDays,
-          durationHours: trainingDurationHours,
-          numberOfTrainees,
-          objectives,
-          passRate: autoPassRate || "-",
-          averageScoreDisplay: autoAverageScore || "-",
-          observedImprovement,
-          trainingFormats,
-          targetUserGroup,
-          followUpSupervisorName,
-          applicationExtent,
-          observedImprovementDetails,
-          supportNeeded,
-          barriersComment,
-          workedWellComment,
-          effectivenessRating,
-          recommendationChoice,
-          trainerFutureSessionComment,
-          supervisorFutureSessionComment,
-          trainees,
-          signatures,
-          signOff,
-          traineeRoster
-        }
+    if (!feedbackDeadline) {
+      setSubmitModal({
+        open: true,
+        kind: "error",
+        title: "Set Feedback Deadline",
+        message: "Please set the trainee feedback deadline before generating the QR code."
       });
-      setDistributedFormId(formId);
+      return;
+    }
+
+    if (!effectiveDistributedFormId) {
+      setSubmitModal({
+        open: true,
+        kind: "error",
+        title: "Save Draft First",
+        message:
+          "Submit this page as a draft first. Once it is saved to My Submissions, the official trainee QR and link will be generated from the database record."
+      });
+      return;
     }
 
     setSubmitModal({
       open: true,
       kind: "success",
       title: "Trainee QR Ready",
-      message: `Distribute this link to trainees: /trainee-feedback?formId=${formId}`
+      message: `Distribute this link to trainees: /trainee-feedback?formId=${effectiveDistributedFormId}`
     });
   };
 
@@ -1242,6 +1245,101 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     }
 
     if (userRole === "trainer") {
+      const existingForm = linkedForm ?? (distributedFormId ? forms.find((form) => form.id === distributedFormId) : undefined);
+      const computedAverageScore = Number(
+        (
+          ratings.filter((score): score is number => score !== null).reduce((sum, score) => sum + score, 0) /
+          Math.max(
+            1,
+            ratings.filter((score): score is number => score !== null).length
+          )
+        ).toFixed(1)
+      );
+      const draftPayload = buildSubmittedData();
+
+      if (isDraftSetupStage) {
+        if (!isSectionABComplete) {
+          setSubmitModal({
+            open: true,
+            kind: "error",
+            title: "Complete A+B First",
+            message: "Please complete Sections A and B before saving this training form to My Submissions."
+          });
+          return;
+        }
+
+        if (!feedbackDeadline) {
+          setSubmitModal({
+            open: true,
+            kind: "error",
+            title: "Set Feedback Deadline",
+            message: "Please set the trainee feedback deadline before saving this draft."
+          });
+          return;
+        }
+
+        // Saving the draft creates the first real backend session id that later drives the official trainee QR/link.
+        let trainingSessionId: number | null = null;
+        try {
+          const result = await createTrainingSession({
+            TrainerId: Number(currentUser?.id.replace(/^u/, "")) || 1,
+            Title: trainingTitle || "Training Assessment",
+            Department: trainerDepartment,
+            TrainingDate: trainingDate || undefined,
+            DurationDays: Number(trainingDurationDays) || undefined,
+            DurationHours: Number(trainingDurationHours) || undefined,
+            NumberOfTrainees: Number(numberOfTrainees) || undefined,
+            TrainingFormat: trainingFormats,
+            TargetAudience: targetUserGroup,
+            Objectives: objectives.filter((item) => item.trim().length > 0)
+          });
+          trainingSessionId = result.sessionId;
+        } catch (error) {
+          setSubmitModal({
+            open: true,
+            kind: "error",
+            title: "Draft Save Failed",
+            message: "Unable to save the training draft to the backend. Please check your connection and try again."
+          });
+          return;
+        }
+
+        const newFormId = `F-${trainingSessionId}`;
+        addForm({
+          id: newFormId,
+          title: trainingTitle || "Training Assessment",
+          trainerId: currentUser?.id ?? "u1",
+          assignedSupervisorId: existingForm?.assignedSupervisorId ?? currentUser?.supervisorId,
+          department: trainerDepartment || currentUser?.department || "Operations",
+          date: trainingDate || new Date().toISOString().slice(0, 10),
+          trainees: Number(numberOfTrainees) || traineeRoster.length || 0,
+          feedbackResponses: existingForm?.feedbackResponses ?? 0,
+          averageScore:
+            existingForm && existingForm.feedbackResponses > 0
+              ? existingForm.averageScore
+              : computedAverageScore,
+          status: "Draft",
+          recommendation: "Draft in progress",
+          createdAt: existingForm?.createdAt ?? new Date().toISOString().slice(0, 10),
+          submittedData: draftPayload,
+          supervisorOnlyFeedback: existingForm?.supervisorOnlyFeedback
+        });
+        setDistributedFormId(newFormId);
+        if (draftStorageKey) {
+          localStorage.removeItem(draftStorageKey);
+        }
+        setDraftRestored(false);
+        setShowDraftToast(false);
+        setSubmitModal({
+          open: true,
+          kind: "success",
+          title: "Draft Saved",
+          message: "Sections A and B were saved as a draft. Open this form from My Submissions to complete the remaining trainer sections and access the official trainee QR/link."
+        });
+        navigate(`/trainer/submissions/view?formId=${encodeURIComponent(newFormId)}`);
+        return;
+      }
+
       if (!currentUser?.supervisorId) {
         setSubmitModal({
           open: true,
@@ -1252,22 +1350,45 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         return;
       }
 
-      let trainingSessionId: number | null = null;
+      if (!submissionIntegrity.complete) {
+        setSubmitModal({
+          open: true,
+          kind: "error",
+          title: "Form Incomplete",
+          message: `Complete the required sections before submitting to the supervisor: ${submissionIntegrity.missing.join(", ")}.`
+        });
+        return;
+      }
+
+      let trainingSessionId = Number(effectiveDistributedFormId?.replace(/^F-/, ""));
+      if (!Number.isFinite(trainingSessionId) || trainingSessionId <= 0) {
+        try {
+          const result = await createTrainingSession({
+            TrainerId: Number(currentUser?.id.replace(/^u/, "")) || 1,
+            Title: trainingTitle || "Training Assessment",
+            Department: trainerDepartment,
+            TrainingDate: trainingDate || undefined,
+            DurationDays: Number(trainingDurationDays) || undefined,
+            DurationHours: Number(trainingDurationHours) || undefined,
+            NumberOfTrainees: Number(numberOfTrainees) || undefined,
+            TrainingFormat: trainingFormats,
+            TargetAudience: targetUserGroup,
+            Objectives: objectives.filter((item) => item.trim().length > 0)
+          });
+          trainingSessionId = result.sessionId;
+        } catch (error) {
+          setSubmitModal({
+            open: true,
+            kind: "error",
+            title: "Submission Failed",
+            message: "Unable to save the training session to the backend. Please check your connection and try again."
+          });
+          return;
+        }
+      }
+
       let trainerReportId: number | null = null;
       try {
-        const result = await createTrainingSession({
-          TrainerId: Number(currentUser?.id.replace(/^u/, "")) || 1,
-          Title: trainingTitle || "Training Assessment",
-          Department: trainerDepartment,
-          TrainingDate: trainingDate || undefined,
-          DurationDays: Number(trainingDurationDays) || undefined,
-          DurationHours: Number(trainingDurationHours) || undefined,
-          NumberOfTrainees: Number(numberOfTrainees) || undefined,
-          TrainingFormat: trainingFormats,
-          TargetAudience: targetUserGroup,
-          Objectives: objectives.filter((item) => item.trim().length > 0)
-        });
-        trainingSessionId = result.sessionId;
         const report = await saveTrainerReport({
           TrainingSessionId: trainingSessionId,
           TraineeAssessments: trainees.map((trainee) => ({
@@ -1299,22 +1420,12 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           open: true,
           kind: "error",
           title: "Submission Failed",
-          message: "Unable to save the training session to the backend. Please check your connection and try again."
+          message: "Unable to save the trainer report to the backend. Please check your connection and try again."
         });
         return;
       }
 
-      const newFormId = distributedFormId ?? (trainingSessionId ? `F-${trainingSessionId}` : `F-${Date.now()}`);
-      const existingForm = forms.find((form) => form.id === newFormId);
-      const computedAverageScore = Number(
-        (
-          ratings.filter((score): score is number => score !== null).reduce((sum, score) => sum + score, 0) /
-          Math.max(
-            1,
-            ratings.filter((score): score is number => score !== null).length
-          )
-        ).toFixed(1)
-      );
+      const newFormId = effectiveDistributedFormId ?? `F-${trainingSessionId}`;
 
       addForm({
         id: newFormId,
@@ -1334,39 +1445,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         recommendation: "Pending supervisor review",
         createdAt: existingForm?.createdAt ?? new Date().toISOString().slice(0, 10),
         submittedAt: new Date().toISOString().slice(0, 10),
-        submittedData: {
-          trainerName,
-          trainerDepartment,
-          trainingTitle,
-          trainingDate,
-          durationDays: trainingDurationDays,
-          durationHours: trainingDurationHours,
-          numberOfTrainees,
-          objectives,
-          passRate: autoPassRate || "-",
-          averageScoreDisplay: autoAverageScore || "-",
-          observedImprovement,
-          trainingFormats,
-          targetUserGroup,
-          followUpSupervisorName,
-          perStatementAverages:
-            (existingForm?.supervisorOnlyFeedback?.length ?? 0) > 0
-              ? statementAveragesFromFeedback
-              : ratings.map((score) => (typeof score === "number" ? Number(score.toFixed(2)) : 0)),
-          applicationExtent,
-          observedImprovementDetails,
-          supportNeeded,
-          barriersComment,
-          workedWellComment,
-          effectivenessRating,
-          recommendationChoice,
-          trainerFutureSessionComment,
-          supervisorFutureSessionComment,
-          trainees,
-          signatures,
-          signOff,
-          traineeRoster
-        },
+        submittedData: draftPayload,
         supervisorOnlyFeedback: existingForm?.supervisorOnlyFeedback
       });
       setDistributedFormId(newFormId);
@@ -1376,43 +1455,6 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         title: "Submitted To Supervisor",
         message: `Submitted successfully. This form was sent to ${assignedSupervisor?.name || assignedSupervisor?.email || "your assigned supervisor"}. Trainee link: /trainee-feedback?formId=${newFormId}`
       });
-
-      setActiveSection("A");
-      setDistributedFormId(null);
-      setTrainerName(currentUser?.name ?? "");
-      setTrainerDepartment(currentUser?.department ?? "");
-      setTrainingTitle("");
-      setTrainingDate("");
-      setTrainingDurationDays("");
-      setTrainingDurationHours("");
-      setNumberOfTrainees("");
-      setObjectives([""]);
-      setObservedImprovement("");
-      setTrainingFormats([]);
-      setTargetUserGroup("");
-      setFollowUpSupervisorName("");
-      setApplicationExtent("");
-      setObservedImprovementDetails("");
-      setSupportNeeded("");
-      setBarriersComment("");
-      setWorkedWellComment("");
-      setEffectivenessRating("");
-      setRecommendationChoice("");
-      setTrainerFutureSessionComment("");
-      setSupervisorFutureSessionComment("");
-      setRatings(Array(feedbackStatements.length).fill(null));
-      setTraineeRoster([createEmptyRosterItem()]);
-      setTrainees([createEmptyTrainee()]);
-      setSignatures({ trainer: false, supervisor: false, trainerImage: "", supervisorImage: "" });
-      setSignOff({
-        trainerName: currentUser?.name ?? "",
-        trainerDate: "",
-        supervisorName: "",
-        supervisorDate: ""
-      });
-      setDraftRestored(false);
-      setShowDraftToast(false);
-      setRehydratedFromLinkedForm(false);
 
       if (draftStorageKey) {
         localStorage.removeItem(draftStorageKey);
@@ -1457,6 +1499,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           observedImprovement,
           trainingFormats,
           targetUserGroup,
+          feedbackDeadline,
           followUpSupervisorName,
           perStatementAverages:
             (linkedForm?.supervisorOnlyFeedback?.length ?? 0) > 0
@@ -1541,6 +1584,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         observedImprovement,
         trainingFormats,
         targetUserGroup,
+        feedbackDeadline,
         followUpSupervisorName,
         perStatementAverages:
           (linkedForm?.supervisorOnlyFeedback?.length ?? 0) > 0
@@ -1642,10 +1686,10 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 Submission Integrity Check: {submissionIntegrity.complete ? "Complete" : "Incomplete"}
               </p>
               {submissionIntegrity.complete ? (
-                <p className="mt-1 text-xs">All required sections (A/C/D/F/G) have captured data.</p>
+                <p className="mt-1 text-xs">All required sections and mandatory trainer fields are complete.</p>
               ) : (
                 <div className="mt-1">
-                  <p className="text-xs">Missing or empty sections:</p>
+                  <p className="text-xs">Missing required sections or fields:</p>
                   <ul className="mt-1 list-disc pl-4 text-xs">
                     {submissionIntegrity.missing.map((item) => (
                       <li key={item}>{item}</li>
@@ -1656,68 +1700,6 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
             </div>
           </div>
         ) : null}
-
-        <div className="sticky top-0 z-20 mb-5 rounded-2xl border border-brand-line bg-white/95 px-4 py-4 shadow-sm backdrop-blur md:px-5">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Section Progress</p>
-              <p className="text-sm font-semibold text-brand-ink">
-                Step {visibleSectionIndex + 1} of {visibleSections.length}
-              </p>
-            </div>
-          </div>
-
-          <div className="relative pt-0">
-            <div className="absolute left-0 right-0 top-[18px] h-[3px] rounded-full bg-slate-200" />
-            <div
-              className="absolute left-0 top-[18px] h-[3px] rounded-full bg-slate-700 transition-all duration-300"
-              style={{
-                width: `${visibleSections.length > 1 ? (visibleSectionIndex / (visibleSections.length - 1)) * 100 : 100}%`
-              }}
-            />
-            <div className={`grid gap-1 md:gap-2`} style={{ gridTemplateColumns: `repeat(${visibleSections.length}, minmax(0, 1fr))` }} data-grid-cols={visibleSections.length}>
-            {visibleSections.map((section, index) => {
-              const isActive = section === activeSection;
-              const isCompleted = index < visibleSectionIndex;
-              const isDone = isActive || isCompleted;
-              const sectionLabels: Record<SectionKey, string> = {
-                A: "Training Info",
-                B: "Objectives",
-                C: "Feedback",
-                D: "Skills & Follow-up",
-                F: "Reflection",
-                G: "Sign-off"
-              };
-
-              return (
-                <button
-                  key={section}
-                  type="button"
-                  onClick={() => setActiveSection(section)}
-                  className="group relative px-1 pb-1.5 pt-0 text-center transition"
-                >
-                  <span
-                    className={`mx-auto mb-2 flex size-8 items-center justify-center rounded-full border text-sm font-bold transition md:size-9 ${
-                      isDone
-                        ? "border-slate-700 bg-slate-700 text-white"
-                        : "border-slate-300 bg-white text-slate-400"
-                    }`}
-                  >
-                    {index + 1}
-                  </span>
-                  <span
-                    className={`block text-center text-[11px] font-medium transition md:text-xs ${
-                      isDone ? "text-slate-700" : "text-slate-500"
-                    }`}
-                  >
-                    {sectionLabels[section]}
-                  </span>
-                </button>
-              );
-            })}
-            </div>
-          </div>
-        </div>
 
         <div className="space-y-5">
           {activeSection === "A" && visibleSections.includes("A") ? (
@@ -1767,13 +1749,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
               <div className="md:col-span-2">
                 <p className="mb-2 text-sm font-medium text-slate-700">Training Format</p>
                 <div className="flex flex-wrap gap-4">
-                  {["Classroom", "Virtual", "Workplace-based", "Mobile", "Blended/Hybrid"].map((item) => (
+                  {["Instructor-Led", "Virtual", "Hybrid"].map((item) => (
                     <CheckboxLine
                       key={item}
                       label={item}
                       checked={trainingFormats.includes(item)}
                       disabled={isSupervisorReviewMode}
-                      onChange={(checked) => toggleTrainingFormat(item, checked)}
+                      onChange={(checked) => setTrainingFormats(checked ? [item] : [])}
                     />
                   ))}
                 </div>
@@ -1787,53 +1769,6 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 />
               </div>
 
-              {!isSupervisorReviewMode ? (
-                <div className="md:col-span-2 rounded-xl border border-brand-line bg-slate-50 p-4">
-                  <p className="text-sm font-semibold text-brand-ink">Trainee Link / QR Distribution</p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    The trainee QR code is available only after Section A + B are completed by the trainer.
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={handleDistributeTraineeQr}
-                      disabled={!isSectionABComplete}
-                      className="rounded-lg border border-slate-700 bg-slate-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300"
-                    >
-                      Generate Trainee QR
-                    </button>
-                    <span className="text-xs font-medium text-slate-500">
-                      {isSectionABComplete ? "A+B complete" : "Complete required A+B fields to enable"}
-                    </span>
-                  </div>
-
-                  {distributedFormId && traineeFeedbackLink ? (
-                    <div className="mt-4 grid gap-3 md:grid-cols-[220px,1fr] md:items-start">
-                      <img
-                        src={traineeQrUrl}
-                        alt="Trainee feedback QR code"
-                        className="h-[220px] w-[220px] rounded-lg border border-brand-line bg-white p-2"
-                      />
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Trainee Link</p>
-                        <p className="break-all rounded-lg border border-brand-line bg-white p-2 text-xs text-slate-700">
-                          {traineeFeedbackLink}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!traineeFeedbackLink) return;
-                            navigator.clipboard?.writeText(traineeFeedbackLink);
-                          }}
-                          className="rounded-lg border border-brand-line bg-white px-3 py-2 text-xs font-semibold text-brand-ink transition hover:border-brand-ruby hover:text-brand-ruby"
-                        >
-                          Copy Link
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
             </div>
           </Card>
           ) : null}
@@ -1891,231 +1826,83 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           </Card>
           ) : null}
 
-          {activeSection === "C" && visibleSections.includes("C") ? (
-          <Card
-            section="C"
-            title={userRole === "trainee" ? "Trainee Self-Feedback" : "Trainee Feedback (Aggregate Summary)"}
-            owner={userRole === "trainee" ? "Trainee" : "Trainer"}
-            disabled={isSupervisorReviewMode}
-          >
-            {userRole === "trainer" ? (
-              <div className="mb-4 rounded-xl border border-brand-line bg-slate-50 p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-brand-ink">Trainee Roster (entered by trainer)</p>
-                    <p className="text-xs text-slate-500">Track who attended before recording aggregate feedback scores.</p>
-                    <p className="mt-1 text-[11px] text-slate-500">Rows marked as submitted are locked and cannot be removed.</p>
+          {activeSection === "A" && visibleSections.includes("A") && !isSupervisorReviewMode ? (
+          <section className="rounded-2xl border border-brand-line bg-white shadow-panel">
+            <div className="border-b border-brand-line px-5 py-4 md:px-6">
+              <h2 className="text-base font-semibold text-brand-ink md:text-lg">Trainee Link / QR Distribution</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                This sits after Sections A and B. Set the trainee feedback time limit here, then submit this page as a draft. The official trainee QR and link will be generated from that saved draft.
+              </p>
+            </div>
+            <div className="space-y-4 p-5 md:p-6">
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr),auto] md:items-end">
+                <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  Feedback submission deadline
+                  <input
+                    type="datetime-local"
+                    value={feedbackDeadline}
+                    onChange={(event) => setFeedbackDeadline(event.target.value)}
+                    className="rounded-lg border border-brand-line bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100"
+                  />
+                </label>
+                {isDraftSetupStage ? (
+                  <div className="rounded-xl border border-dashed border-brand-line bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    Submit this page as a draft to create the official trainee QR and link.
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setTraineeRoster((prev) => [...prev, createEmptyRosterItem()])}
-                    className="rounded-lg border border-brand-line bg-white px-3 py-1.5 text-xs font-semibold text-brand-ink transition hover:border-brand-ruby hover:text-brand-ruby"
-                  >
-                    + Add Trainee
-                  </button>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border-collapse rounded-lg border border-brand-line text-sm">
-                    <thead className="bg-slate-100 text-slate-700">
-                      <tr>
-                        <th className={`${tableCell} text-left`}>Trainee Name</th>
-                        <th className={`${tableCell} text-left`}>Department / Role</th>
-                        <th className={`${tableCell} text-center`}>Attendance</th>
-                        <th className={`${tableCell} text-center`}>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {traineeRoster.map((item, index) => {
-                        const rowSubmitted = submittedTraineeNameSet.has(normalizeTraineeKey(item.name));
-                        return (
-                        <tr key={`roster-${index}`} className="odd:bg-white even:bg-slate-50">
-                          <td className={tableCell}>
-                            <input
-                              type="text"
-                              value={item.name}
-                              readOnly={rowSubmitted}
-                              placeholder={`Trainee ${index + 1}`}
-                              onChange={(event) => {
-                                const value = event.target.value;
-                                setTraineeRoster((prev) => {
-                                  const next = [...prev];
-                                  next[index] = { ...next[index], name: value };
-                                  return next;
-                                });
-                              }}
-                              className={`w-full rounded-lg border border-brand-line px-2 py-1.5 text-sm ${rowSubmitted ? "bg-slate-100 text-slate-500" : ""}`}
-                            />
-                          </td>
-                          <td className={tableCell}>
-                            <input
-                              type="text"
-                              value={item.departmentOrRole}
-                              readOnly={rowSubmitted}
-                              placeholder="e.g. Operations"
-                              onChange={(event) => {
-                                const value = event.target.value;
-                                setTraineeRoster((prev) => {
-                                  const next = [...prev];
-                                  next[index] = { ...next[index], departmentOrRole: value };
-                                  return next;
-                                });
-                              }}
-                              className={`w-full rounded-lg border border-brand-line px-2 py-1.5 text-sm ${rowSubmitted ? "bg-slate-100 text-slate-500" : ""}`}
-                            />
-                          </td>
-                          <td className={`${tableCell} text-center`}>
-                            <YesNoGroup
-                              name={`attendance-${index}`}
-                              value={item.attendance}
-                              disabled={rowSubmitted}
-                              onChange={(value) => {
-                                setTraineeRoster((prev) => {
-                                  const next = [...prev];
-                                  next[index] = { ...next[index], attendance: value };
-                                  return next;
-                                });
-                              }}
-                            />
-                          </td>
-                          <td className={`${tableCell} text-center`}>
-                            {rowSubmitted ? (
-                              <span className="mr-2 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                                Submitted
-                              </span>
-                            ) : null}
-                            <button
-                              type="button"
-                              disabled={traineeRoster.length === 1 || rowSubmitted}
-                              onClick={() =>
-                                setTraineeRoster((prev) => prev.filter((_, rowIndex) => rowIndex !== index))
-                              }
-                              className="text-xs font-medium text-slate-500 transition hover:text-brand-ruby disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              Remove
-                            </button>
-                          </td>
-                        </tr>
-                      )})}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse overflow-hidden rounded-lg border border-brand-line text-sm">
-                <thead className="bg-slate-100 text-slate-700">
-                  <tr>
-                    <th className={`${tableCell} text-left`}>Statement</th>
-                    {ratingScale.map((score) => (
-                      <th key={score} className={`${tableCell} text-center`}>{score}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {feedbackStatements.map((statement, rowIndex) => (
-                    <tr key={statement} className="odd:bg-white even:bg-slate-50">
-                      <td className={tableCell}>{statement}</td>
-                      {ratingScale.map((score) => (
-                        <td key={score} className={`${tableCell} text-center`}>
-                          <input
-                            type="radio"
-                            name={`feedback-${rowIndex}`}
-                            checked={ratings[rowIndex] === score}
-                            onChange={() => {
-                              setRatings((prev) => {
-                                const next = [...prev];
-                                next[rowIndex] = score;
-                                return next;
-                              });
-                            }}
-                            className="accent-brand-ruby"
-                          />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-4 max-w-md">
-              <TextInput label="Average Score (auto-calculated)" value={autoAverageScore || "-"} readOnly />
-            </div>
-            {statementAveragesForDisplay.length === feedbackStatements.length ? (
-              <div className="mt-4 rounded-xl border border-brand-line bg-slate-50 p-4">
-                <p className="mb-2 text-sm font-semibold text-brand-ink">Per-statement Aggregate (out of 5)</p>
-                <div className="space-y-1.5">
-                  {feedbackStatements.map((statement, index) => (
-                    <div key={`agg-${index}`} className="flex items-start justify-between gap-3">
-                      <p className="text-xs text-slate-700">{statement}</p>
-                      <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-800">
-                        {statementAveragesForDisplay[index].toFixed(2)} / 5
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            {isSupervisorReviewMode ? (
-              <div className="mt-5 rounded-xl border border-brand-line bg-slate-50 p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-brand-ink">Trainee Comments (Supervisor View)</h3>
-                  <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-                    {linkedForm?.supervisorOnlyFeedback?.length ?? 0}
-                  </span>
-                </div>
-                {(linkedForm?.supervisorOnlyFeedback?.length ?? 0) === 0 ? (
-                  <p className="text-sm text-slate-600">No trainee comments submitted yet.</p>
                 ) : (
-                  <div className="space-y-2.5">
-                    {linkedForm?.supervisorOnlyFeedback?.map((entry, index) => (
-                      <article
-                        key={`${entry.traineeName || "trainee"}-${entry.employeeId || "no-id"}-${index}`}
-                        className="rounded-lg border border-slate-200 bg-white p-3"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-slate-900">
-                            {entry.traineeName?.trim() ? entry.traineeName.trim() : "Anonymous trainee"}
-                          </p>
-                          <p className="text-xs text-slate-500">{entry.feedbackDate || "No date"}</p>
-                        </div>
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          {entry.employeeId?.trim() ? entry.employeeId.trim() : "No employee ID"} • {entry.departmentRole?.trim() ? entry.departmentRole.trim() : "No department/role"}
-                        </p>
-                        <p className="mt-2 text-sm text-slate-700">
-                          {entry.comment?.trim().length ? entry.comment.trim() : "No comment provided."}
-                        </p>
-                        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2.5">
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                            Full Statement Ratings
-                          </p>
-                          <div className="space-y-1.5">
-                            {feedbackStatements.map((statement, statementIndex) => {
-                              const ratingValue = entry.statementRatings?.[statementIndex];
-                              return (
-                                <div
-                                  key={`${entry.traineeName || "trainee"}-${statementIndex}`}
-                                  className="flex items-start justify-between gap-3"
-                                >
-                                  <p className="text-xs text-slate-700">{statement}</p>
-                                  <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-800">
-                                    {typeof ratingValue === "number" ? `${ratingValue}/5` : "N/A"}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        <p className="mt-2 text-xs font-semibold text-slate-600">
-                          Score: {entry.averageScore?.toFixed?.(1) ?? entry.averageScore ?? 0} / 5
-                        </p>
-                      </article>
-                    ))}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleDistributeTraineeQr}
+                      disabled={!isSectionABComplete || !feedbackDeadline}
+                      className="rounded-lg border border-slate-700 bg-slate-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300"
+                    >
+                      Generate Trainee QR
+                    </button>
+                    <span className="text-xs font-medium text-slate-500">
+                      {!isSectionABComplete
+                        ? "Complete required A+B fields to enable"
+                        : !feedbackDeadline
+                          ? "Set a deadline to enable distribution"
+                          : "A+B complete"}
+                    </span>
                   </div>
                 )}
               </div>
-            ) : null}
-          </Card>
+
+              {formattedFeedbackDeadline ? (
+                <p className="text-xs text-slate-500">
+                  Trainees can submit feedback until <span className="font-semibold text-slate-700">{formattedFeedbackDeadline}</span>.
+                </p>
+              ) : null}
+
+              {!isDraftSetupStage && distributedFormId && traineeFeedbackLink ? (
+                <div className="grid gap-3 md:grid-cols-[220px,1fr] md:items-start">
+                  <img
+                    src={traineeQrUrl}
+                    alt="Trainee feedback QR code"
+                    className="h-[220px] w-[220px] rounded-lg border border-brand-line bg-white p-2"
+                  />
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Trainee Link</p>
+                    <p className="break-all rounded-lg border border-brand-line bg-white p-2 text-xs text-slate-700">
+                      {traineeFeedbackLink}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!traineeFeedbackLink) return;
+                        navigator.clipboard?.writeText(traineeFeedbackLink);
+                      }}
+                      className="rounded-lg border border-brand-line bg-white px-3 py-2 text-xs font-semibold text-brand-ink transition hover:border-brand-ruby hover:text-brand-ruby"
+                    >
+                      Copy Link
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </section>
           ) : null}
 
           {activeSection === "D" && visibleSections.includes("D") ? (
@@ -2564,7 +2351,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
               Section {activeSection}
             </p>
             <div className="flex flex-col items-end gap-1">
-              {!isSupervisorReviewMode && !assignedSupervisor ? (
+              {!isSupervisorReviewMode && !isDraftSetupStage && !assignedSupervisor ? (
                 <p className="text-xs font-medium text-rose-700">
                   No supervisor assigned. Contact admin before submitting.
                 </p>
@@ -2586,7 +2373,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                   className="rounded-lg border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-black focus:outline-none focus:ring-2 focus:ring-slate-400"
                 >
                   {userRole === "trainer"
-                    ? "Submit To Supervisor"
+                    ? isDraftSetupStage
+                      ? "Submit Draft"
+                      : "Submit To Supervisor"
                     : userRole === "supervisor"
                       ? "Approve Submission"
                       : "Submit Feedback"}
