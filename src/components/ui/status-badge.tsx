@@ -1,19 +1,21 @@
-﻿// Status badge mapping for workflow states (draft -> completed).
+// Status badge mapping for backend-aligned workflow states.
 import { cn } from "../../lib/utils";
+import { statusLabel } from "../../lib/form-status";
 import type { Status } from "../../types";
 
 const map: Record<Status, string> = {
-  Draft: "bg-slate-100 text-slate-700",
-  "Waiting for Feedback": "bg-rose-100 text-rose-800",
-  Submitted: "bg-slate-200 text-slate-800",
-  "Under Review": "bg-amber-100 text-amber-800",
-  Approved: "bg-emerald-100 text-emerald-700",
-  "Needs Correction": "bg-orange-100 text-orange-700",
-  Completed: "bg-rose-50 text-rose-900"
+  DRAFT: "bg-slate-100 text-slate-700",
+  OPENFORFEEDBACK: "bg-rose-100 text-rose-800",
+  FEEDBACKCLOSED: "bg-violet-100 text-violet-800",
+  TRAINERASSESSMENTPENDING: "bg-amber-100 text-amber-800",
+  FOLLOWUPPENDING: "bg-orange-100 text-orange-700",
+  COMPLETED: "bg-emerald-100 text-emerald-700"
 };
 
 export function StatusBadge({ status, className }: { status: Status; className?: string }) {
-  return <span className={cn("inline-flex rounded-full px-3 py-1 text-xs font-semibold", map[status], className)}>{status}</span>;
+  return (
+    <span className={cn("inline-flex rounded-full px-3 py-1 text-xs font-semibold", map[status], className)}>
+      {statusLabel(status)}
+    </span>
+  );
 }
-
-

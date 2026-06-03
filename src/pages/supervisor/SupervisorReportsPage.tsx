@@ -1,6 +1,7 @@
 ﻿import { useMemo } from "react";
 import { AlertTriangle, BadgeCheck, BarChart3, CheckCircle2, Lightbulb, Target, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { statusLabel } from "../../lib/form-status";
 import { useAppStore } from "../../store/app-store";
 
 function pct(value: number, total: number) {
@@ -35,8 +36,8 @@ export function SupervisorReportsPage() {
   );
 
   const total = assignedForms.length;
-  const approved = assignedForms.filter((f) => f.status === "Approved").length;
-  const needsCorrection = assignedForms.filter((f) => f.status === "Needs Correction").length;
+  const approved = assignedForms.filter((f) => f.status === "COMPLETED").length;
+  const needsCorrection = assignedForms.filter((f) => f.status === "FOLLOWUPPENDING").length;
 
   const totalInvited = assignedForms.reduce((acc, f) => acc + f.trainees, 0);
   const totalResponses = assignedForms.reduce((acc, f) => acc + f.feedbackResponses, 0);
@@ -57,7 +58,7 @@ export function SupervisorReportsPage() {
       row.forms += 1;
       row.responses += f.feedbackResponses;
       row.invited += f.trainees;
-      if (f.status === "Approved") row.approved += 1;
+      if (f.status === "COMPLETED") row.approved += 1;
     });
 
     const keys = Array.from(grouped.keys()).sort();
@@ -73,20 +74,22 @@ export function SupervisorReportsPage() {
     });
   }, [assignedForms]);
 
-  const topTrainings = useMemo(() => {
+  const performanceRows = useMemo(() => {
     return [...assignedForms]
       .map((f) => ({
         id: f.id,
         title: f.title,
-        trainer: f.trainerId,
+        trainer: users.find((u) => u.id === f.trainerId)?.name ?? "Unknown Trainer",
+        department: f.department,
         date: f.date,
+        invited: f.trainees,
+        responses: f.feedbackResponses,
         responseRate: pct(f.feedbackResponses, f.trainees),
         averageScore: f.averageScore,
         status: f.status
       }))
-      .sort((a, b) => b.averageScore - a.averageScore)
-      .slice(0, 6);
-  }, [assignedForms]);
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [assignedForms, users]);
 
   const focusAreaAverages = useMemo(() => {
     const labels = [
@@ -143,7 +146,7 @@ export function SupervisorReportsPage() {
         const riskPoints =
           (form.averageScore < 4 ? 2 : 0) +
           (rr < 60 ? 2 : rr < 75 ? 1 : 0) +
-          (form.status === "Needs Correction" ? 3 : 0);
+          (form.status === "FOLLOWUPPENDING" ? 3 : 0);
         return {
           id: form.id,
           title: form.title,
@@ -168,7 +171,7 @@ export function SupervisorReportsPage() {
       const row = byTrainer.get(id)!;
       row.forms += 1;
       row.avg += form.averageScore;
-      if (["Needs Correction"].includes(form.status)) row.corrections += 1;
+      if (["FOLLOWUPPENDING"].includes(form.status)) row.corrections += 1;
       row.responses += form.feedbackResponses;
       row.invited += form.trainees;
     });
@@ -341,17 +344,25 @@ export function SupervisorReportsPage() {
                 <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Training</th>
+                    <th className="px-4 py-3 font-semibold">Trainer</th>
+                    <th className="px-4 py-3 font-semibold">Department</th>
                     <th className="px-4 py-3 font-semibold">Date</th>
+                    <th className="px-4 py-3 font-semibold">Invited</th>
+                    <th className="px-4 py-3 font-semibold">Responses</th>
                     <th className="px-4 py-3 font-semibold">Response Rate</th>
                     <th className="px-4 py-3 font-semibold">Rating</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {topTrainings.map((t) => (
+                  {performanceRows.map((t) => (
                     <tr key={t.id} className="border-t border-slate-100">
                       <td className="px-4 py-2.5 font-medium text-slate-800">{t.title}</td>
+                      <td className="px-4 py-2.5 text-slate-700">{t.trainer}</td>
+                      <td className="px-4 py-2.5 text-slate-700">{t.department}</td>
                       <td className="px-4 py-2.5 text-slate-700">{t.date}</td>
+                      <td className="px-4 py-2.5 text-slate-700">{t.invited}</td>
+                      <td className="px-4 py-2.5 text-slate-700">{t.responses}</td>
                       <td className="px-4 py-2.5 text-slate-700">
                         <div className="flex items-center gap-2">
                           <div className="h-2 w-20 rounded-full bg-slate-100">
@@ -372,21 +383,21 @@ export function SupervisorReportsPage() {
                       <td className="px-4 py-2.5">
                         <span
                           className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            t.status === "Approved"
+                            t.status === "COMPLETED"
                               ? "bg-emerald-100 text-emerald-700"
-                              : t.status === "Needs Correction"
+                              : t.status === "FOLLOWUPPENDING"
                                 ? "bg-rose-100 text-rose-700"
                                 : "bg-amber-100 text-amber-700"
                           }`}
                         >
-                          {t.status}
+                          {statusLabel(t.status)}
                         </span>
                       </td>
                     </tr>
                   ))}
-                  {topTrainings.length === 0 ? (
+                  {performanceRows.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">No training records available.</td>
+                      <td colSpan={9} className="px-4 py-8 text-center text-sm text-slate-500">No training records available.</td>
                     </tr>
                   ) : null}
                 </tbody>
@@ -404,15 +415,15 @@ export function SupervisorReportsPage() {
           <CardContent className="space-y-3 text-sm">
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
               <p className="mb-2 inline-flex items-center gap-2 font-semibold text-emerald-800">
-                <CheckCircle2 className="size-4" /> Trainings Doing Well
+                <CheckCircle2 className="size-4" /> Strongest Training Results
               </p>
               <div className="space-y-1.5">
                 {strongestTrainings.length === 0 ? (
-                  <p className="text-emerald-700">No strong performers identified yet.</p>
+                  <p className="text-emerald-700">No completed training results are available yet.</p>
                 ) : (
                   strongestTrainings.map((t) => (
                     <p key={t.id} className="text-emerald-800">
-                      <span className="font-semibold">{t.title}</span> â€¢ {t.trainer} â€¢ {t.averageScore.toFixed(1)}/5 â€¢ {t.responseRate}% response
+                      <span className="font-semibold">{t.title}</span> - {t.trainer} - {t.averageScore.toFixed(1)}/5 average rating - {t.responseRate}% response rate
                     </p>
                   ))
                 )}
@@ -421,15 +432,15 @@ export function SupervisorReportsPage() {
 
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
               <p className="mb-2 inline-flex items-center gap-2 font-semibold text-amber-800">
-                <AlertTriangle className="size-4" /> Trainings Needing Attention
+                <AlertTriangle className="size-4" /> Trainings Requiring Attention
               </p>
               <div className="space-y-1.5">
                 {atRiskTrainings.length === 0 ? (
-                  <p className="text-amber-700">No at-risk trainings detected right now.</p>
+                  <p className="text-amber-700">No training records currently meet the attention threshold.</p>
                 ) : (
                   atRiskTrainings.map((t) => (
                     <p key={t.id} className="text-amber-800">
-                      <span className="font-semibold">{t.title}</span> â€¢ {t.trainer} â€¢ risk score {t.riskPoints} â€¢ {t.status}
+                      <span className="font-semibold">{t.title}</span> - {t.trainer} - risk score {t.riskPoints} - {statusLabel(t.status)}
                     </p>
                   ))
                 )}
@@ -438,18 +449,14 @@ export function SupervisorReportsPage() {
 
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="mb-2 inline-flex items-center gap-2 font-semibold text-slate-800">
-                <Lightbulb className="size-4" /> Focus Areas for Trainers
+                <Lightbulb className="size-4" /> Lowest-Rated Feedback Areas
               </p>
               <div className="space-y-2">
-                {(focusAreaAverages.length > 0
-                  ? [...focusAreaAverages].sort((a, b) => a.average - b.average).slice(0, 3)
-                  : [
-                      { label: "Practical examples", average: 0 },
-                      { label: "Pace and duration", average: 0 },
-                      { label: "Workplace application", average: 0 }
-                    ]
-                ).map((area) => {
-                  const score = area.average > 0 ? area.average : 3.0;
+                {focusAreaAverages.length === 0 ? (
+                  <p className="text-sm text-slate-500">No trainee feedback is available yet to identify weak areas.</p>
+                ) : (
+                  [...focusAreaAverages].sort((a, b) => a.average - b.average).slice(0, 3).map((area) => {
+                  const score = area.average;
                   const scorePct = Math.round((score / 5) * 100);
                   return (
                     <div key={area.label}>
@@ -465,7 +472,7 @@ export function SupervisorReportsPage() {
                       </div>
                     </div>
                   );
-                })}
+                }))}
               </div>
             </div>
           </CardContent>
@@ -477,7 +484,7 @@ export function SupervisorReportsPage() {
           </CardHeader>
           <CardContent className="space-y-2.5 text-sm">
             {trainerCoachingPriorities.length === 0 ? (
-              <p className="text-slate-500">No trainer coaching data available yet.</p>
+              <p className="text-slate-500">No trainer-level performance data is available yet.</p>
             ) : (
               trainerCoachingPriorities.map((trainer) => (
                 <div key={trainer.name} className="rounded-lg border border-slate-100 p-3">
@@ -503,14 +510,16 @@ export function SupervisorReportsPage() {
               ))
             )}
 
-            <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs">
-              <p className="mb-1 inline-flex items-center gap-1.5 font-semibold text-indigo-800">
-                <Target className="size-3.5" /> Suggested Next Sprint Focus
-              </p>
-              <p className="text-indigo-700">
-                Prioritize practical relevance and pacing in upcoming trainings, and coach trainers with high correction rates first.
-              </p>
-            </div>
+            {trainerCoachingPriorities.length > 0 ? (
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs">
+                <p className="mb-1 inline-flex items-center gap-1.5 font-semibold text-indigo-800">
+                  <Target className="size-3.5" /> Current highest-priority coaching candidate
+                </p>
+                <p className="text-indigo-700">
+                  {trainerCoachingPriorities[0].name} currently has the highest combined correction-pressure and response-risk profile based on recorded forms.
+                </p>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </section>

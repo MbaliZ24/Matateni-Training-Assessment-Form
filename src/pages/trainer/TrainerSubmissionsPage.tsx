@@ -97,7 +97,7 @@ export function TrainerSubmissionsPage() {
       onClick: () => exportSignedFormPdf(form, { includeTraineeComments: false })
     };
 
-    if (form.status === "Draft") {
+    if (["DRAFT", "OPENFORFEEDBACK", "FEEDBACKCLOSED"].includes(form.status)) {
       return [
         {
           label: "Continue Draft",
@@ -109,12 +109,15 @@ export function TrainerSubmissionsPage() {
           label: "Delete Draft",
           icon: Trash2,
           destructive: true,
-          onClick: () => removeForm(form.id)
+          onClick: () => {
+            if (!window.confirm(`Delete draft "${form.title}"? This cannot be undone.`)) return;
+            removeForm(form.id);
+          }
         }
       ];
     }
 
-    if (form.status === "Needs Correction") {
+    if (form.status === "FOLLOWUPPENDING") {
       return [
         {
           label: "Resume Corrections",
@@ -142,7 +145,7 @@ export function TrainerSubmissionsPage() {
                 <tr>
                   <th className="px-4 py-3 font-semibold">Form ID</th>
                   <th className="px-4 py-3 font-semibold">Training</th>
-                  <th className="px-4 py-3 font-semibold">Submitted</th>
+                  <th className="px-4 py-3 font-semibold">Last Updated</th>
                   <th className="px-4 py-3 font-semibold">Supervisor</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Actions</th>
@@ -152,11 +155,24 @@ export function TrainerSubmissionsPage() {
                 {mySubmissions.map((form) => (
                   <tr key={form.id} className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="px-4 py-2.5 font-mono text-xs text-slate-700">{form.id}</td>
-                    <td className="px-4 py-2.5 font-medium text-slate-800">{form.title}</td>
-                    <td className="px-4 py-2.5 text-slate-700">{form.submittedAt || form.createdAt}</td>
+                    <td className="px-4 py-2.5">
+                      <p className="font-medium text-slate-800">{form.title}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {form.feedbackResponses} feedback response{form.feedbackResponses === 1 ? "" : "s"} received
+                      </p>
+                      {form.status === "FOLLOWUPPENDING" && form.supervisorReview?.comments ? (
+                        <p className="mt-1 line-clamp-2 text-xs text-amber-700">
+                          Return reason: {form.supervisorReview.comments}
+                        </p>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-700">{(form.updatedAt ?? form.submittedAt ?? form.createdAt).slice(0, 10)}</td>
                     <td className="px-4 py-2.5 text-slate-700">{supervisorName(form.assignedSupervisorId)}</td>
                     <td className="px-4 py-2.5">
                       <StatusBadge status={form.status} />
+                      {["DRAFT", "OPENFORFEEDBACK", "FEEDBACKCLOSED"].includes(form.status) ? (
+                        <p className="mt-1 text-xs text-slate-500">Editable and not yet sent to supervisor</p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-2.5">
                       <button
@@ -186,7 +202,7 @@ export function TrainerSubmissionsPage() {
                 {mySubmissions.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
-                      No submissions yet.
+                      No submissions yet. Save your first draft from the trainer form to start tracking follow-up, feedback, and supervisor review here.
                     </td>
                   </tr>
                 ) : null}

@@ -21,8 +21,6 @@ export function exportCsvRows(filename: string, headers: string[], rows: (string
 }
 
 function buildSignedFormHtml(form: TrainingForm, includeTraineeComments: boolean) {
-  const review = form.supervisorReview;
-  const sectionFeedback = review?.sectionFeedback ?? [];
   const traineeComments = form.supervisorOnlyFeedback ?? [];
   const submitted = form.submittedData;
   const objectives = submitted?.objectives ?? [];
@@ -62,7 +60,6 @@ function buildSignedFormHtml(form: TrainingForm, includeTraineeComments: boolean
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
 
-  const yesNo = (v?: string) => (v && v.trim().length > 0 ? esc(v) : "-");
   const txt = (v?: string) => (v && v.trim().length > 0 ? esc(v) : "-");
   const imageTag = (src?: string, alt?: string) =>
     src && src.trim().length > 0
@@ -70,6 +67,15 @@ function buildSignedFormHtml(form: TrainingForm, includeTraineeComments: boolean
       : "<span>-</span>";
   const listOrDash = (items: string[]) =>
     items.length > 0 ? `<ul>${items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "<p class='muted'>-</p>";
+  const optionGroup = (selected: string | undefined, options: string[]) =>
+    `<div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;">
+      ${options
+        .map((option) => {
+          const active = (selected ?? "").trim().toLowerCase() === option.trim().toLowerCase();
+          return `<span style="border:1px solid ${active ? "#7f1d1d" : "#cbd5e1"}; background:${active ? "#fef2f2" : "#fff"}; color:${active ? "#7f1d1d" : "#334155"}; border-radius:999px; padding:4px 10px; font-size:10px; font-weight:${active ? "700" : "500"};">${active ? "Selected: " : ""}${esc(option)}</span>`;
+        })
+        .join("")}
+    </div>`;
 
   return `<!doctype html>
 <html>
@@ -294,13 +300,23 @@ function buildSignedFormHtml(form: TrainingForm, includeTraineeComments: boolean
         : "<p class='muted'>No skills evaluation submitted.</p>"
     }
     <h2 style="margin-top:8px">Section E: Workplace Application & Follow-up</h2>
-    <div class="grid" style="margin-top:6px">
-      <div class="cell"><b>Supervisor Name</b><span>${txt(submitted?.followUpSupervisorName || submitted?.signOff?.supervisorName)}</span></div>
-      <div class="cell"><b>Application Extent</b><span>${txt(submitted?.applicationExtent)}</span></div>
-      <div class="cell"><b>Observed Improvement</b><span>${yesNo(submitted?.observedImprovement)}</span></div>
-      <div class="cell"><b>Support Needed</b><span>${txt(submitted?.supportNeeded)}</span></div>
-      <div class="cell wide"><b>Observed Improvement Details</b><span>${txt(submitted?.observedImprovementDetails)}</span></div>
-      <div class="cell wide"><b>Barriers / Comments</b><span>${txt(submitted?.barriersComment)}</span></div>
+    <p class="muted" style="margin:4px 0 8px;">To be completed by trainer with input from supervisor or line manager, 2-4 weeks post-training.</p>
+    <div style="margin-top:6px;">
+      <p><b>1. To what extent have trainees applied the skills in the workplace?</b></p>
+      ${optionGroup(submitted?.applicationExtent, ["Not at all", "Minimally", "Moderately", "Largely", "Fully"])}
+
+      <p style="margin-top:10px;"><b>2. Observed improvement in performance or system use?</b></p>
+      ${optionGroup(submitted?.observedImprovement, ["Yes", "No"])}
+      <p style="margin-top:6px;"><b>If yes, please describe briefly:</b> ${txt(submitted?.observedImprovementDetails)}</p>
+
+      <p style="margin-top:10px;"><b>3. Additional support or refresher training needed?</b></p>
+      ${optionGroup(submitted?.supportNeeded, ["None", "Minimal", "Significant", "Full retraining required"])}
+
+      <p style="margin-top:10px;"><b>4. Comments / barriers to application (e.g. time, resources, supervision):</b></p>
+      <p style="margin:6px 0 4px;"><b>Comment by trainer:</b></p>
+      <div style="margin-top:4px; min-height:54px; border:1px solid #cbd5e1; border-radius:8px; padding:8px; background:#fff;">${txt(submitted?.trainerApplicationComment || submitted?.barriersComment)}</div>
+      <p style="margin:10px 0 4px;"><b>Comment by supervisor:</b></p>
+      <div style="margin-top:4px; min-height:54px; border:1px solid #cbd5e1; border-radius:8px; padding:8px; background:#fff;">${txt(submitted?.supervisorApplicationComment)}</div>
     </div>
   </section>
 
@@ -311,7 +327,6 @@ function buildSignedFormHtml(form: TrainingForm, includeTraineeComments: boolean
       <tbody>
         <tr><td>What worked well in this training</td><td>${txt(submitted?.workedWellComment)}</td></tr>
         <tr><td>What would you change for future sessions</td><td>${txt(submitted?.trainerFutureSessionComment)}</td></tr>
-        <tr><td>Supervisor comment for future sessions</td><td>${txt(submitted?.supervisorFutureSessionComment)}</td></tr>
         <tr><td>Training effectiveness rating (overall)</td><td>${txt(submitted?.effectivenessRating)}</td></tr>
         <tr><td>Recommendation</td><td>${txt(submitted?.recommendationChoice || form.recommendation)}</td></tr>
       </tbody>
@@ -326,38 +341,17 @@ function buildSignedFormHtml(form: TrainingForm, includeTraineeComments: boolean
         <tr>
           <td>Trainer</td>
           <td>${txt(submitted?.signOff?.trainerName)}</td>
-          <td>${imageTag(submitted?.signatures?.trainerImage, "Trainer signature")} ${submitted?.signatures?.trainer ? "<span class='nowrap'>Signed</span>" : "-"}</td>
+          <td>${imageTag(submitted?.signatures?.trainerImage, "Trainer signature")}</td>
           <td>${txt(submitted?.signOff?.trainerDate)}</td>
         </tr>
         <tr>
           <td>Supervisor</td>
           <td>${txt(submitted?.signOff?.supervisorName)}</td>
-          <td>${imageTag(submitted?.signatures?.supervisorImage, "Supervisor signature")} ${submitted?.signatures?.supervisor ? "<span class='nowrap'>Signed</span>" : "-"}</td>
+          <td>${imageTag(submitted?.signatures?.supervisorImage, "Supervisor signature")}</td>
           <td>${txt(submitted?.signOff?.supervisorDate)}</td>
         </tr>
       </tbody>
     </table>
-  </section>
-
-  <section class="section">
-    <h2>Supervisor Review</h2>
-    <div class="grid">
-      <div class="cell"><b>Decision</b><span>${esc(review?.decision ?? (form.status === "Approved" ? "Approved" : form.status))}</span></div>
-      <div class="cell"><b>Reviewer</b><span>${esc(review?.submittedBy ?? "Supervisor")}</span></div>
-      <div class="cell"><b>Updated</b><span>${esc((review?.updatedAt ?? form.createdAt).slice(0, 10))}</span></div>
-      <div class="cell wide"><b>Comments</b><span>${txt(review?.comments)}</span></div>
-      <div class="cell wide"><b>Action Items</b>${review?.actionItems?.length ? listOrDash(review.actionItems) : "<p class='muted'>-</p>"}</div>
-    </div>
-    ${
-      sectionFeedback.length
-        ? `<table>
-             <thead><tr><th>Section</th><th>Verdict</th><th>Comment</th></tr></thead>
-             <tbody>${sectionFeedback
-               .map((s) => `<tr><td>${esc(s.section)}</td><td class="nowrap">${esc(s.verdict)}</td><td>${esc(s.comment || "-")}</td></tr>`)
-               .join("")}</tbody>
-           </table>`
-        : "<p class='muted' style='margin-top:6px'>No section-level review notes.</p>"
-    }
   </section>
 
   ${

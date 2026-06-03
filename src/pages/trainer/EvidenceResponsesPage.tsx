@@ -29,7 +29,7 @@ export function EvidenceResponsesPage() {
   );
 
   const totalSubmitted = trainerForms.length;
-  const totalApproved = trainerForms.filter((form) => form.status === "Approved").length;
+  const totalApproved = trainerForms.filter((form) => form.status === "COMPLETED").length;
   const responsesReceived = respondedForms.length;
 
   return (

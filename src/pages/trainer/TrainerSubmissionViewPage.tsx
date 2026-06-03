@@ -28,10 +28,31 @@ export function TrainerSubmissionViewPage() {
   }
 
   return (
-    <ExactAssessmentFormPage
-      readOnly={target.status !== "Draft" && target.status !== "Needs Correction"}
-      reviewFormId={target.id}
-      submittedData={target.submittedData}
-    />
+    <div className="space-y-5">
+      {target.status === "FOLLOWUPPENDING" ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm">
+          <p className="font-semibold">Supervisor feedback</p>
+          <p className="mt-1">{target.supervisorReview?.comments || "The supervisor returned this submission for updates."}</p>
+          {(target.supervisorReview?.actionItems?.length ?? 0) > 0 ? (
+            <ul className="mt-2 list-disc pl-5 text-xs">
+              {target.supervisorReview?.actionItems.map((item, index) => (
+                <li key={`${item}-${index}`}>{item}</li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
+
+      <ExactAssessmentFormPage
+        readOnly={
+          target.status !== "DRAFT" &&
+          target.status !== "OPENFORFEEDBACK" &&
+          target.status !== "FEEDBACKCLOSED" &&
+          target.status !== "FOLLOWUPPENDING"
+        }
+        reviewFormId={target.id}
+        submittedData={target.submittedData}
+      />
+    </div>
   );
 }

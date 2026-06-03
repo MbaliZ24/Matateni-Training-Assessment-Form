@@ -6,15 +6,16 @@ import { Button } from "../../components/ui/button";
 import { useAppStore } from "../../store/app-store";
 import { exportCsvRows } from "../../lib/export";
 import type { Status } from "../../types";
-import { isInStatuses, REVIEW_QUEUE_STATUSES } from "../../lib/form-status";
+import { isInStatuses, REVIEW_QUEUE_STATUSES, statusLabel } from "../../lib/form-status";
 
 const reportStatuses: ("All" | Status)[] = [
   "All",
-  "Draft",
-  "Submitted",
-  "Under Review",
-  "Approved",
-  "Needs Correction"
+  "DRAFT",
+  "OPENFORFEEDBACK",
+  "FEEDBACKCLOSED",
+  "TRAINERASSESSMENTPENDING",
+  "FOLLOWUPPENDING",
+  "COMPLETED"
 ];
 
 function pct(value: number, total: number) {
@@ -73,7 +74,7 @@ export function AdminReportsPage() {
 
   const metrics = useMemo(() => {
     const total = filteredForms.length;
-    const approved = filteredForms.filter((f) => f.status === "Approved").length;
+    const approved = filteredForms.filter((f) => f.status === "COMPLETED").length;
     const pending = filteredForms.filter((f) => isInStatuses(f.status, REVIEW_QUEUE_STATUSES)).length;
     const totalResponses = filteredForms.reduce((sum, f) => sum + f.feedbackResponses, 0);
     const totalInvited = filteredForms.reduce((sum, f) => sum + f.trainees, 0);
@@ -117,7 +118,7 @@ export function AdminReportsPage() {
           f.trainees,
           `${pct(f.feedbackResponses, f.trainees)}%`,
           f.averageScore.toFixed(1),
-          f.status
+          statusLabel(f.status)
         ];
       })
     );
@@ -178,7 +179,7 @@ export function AdminReportsPage() {
             >
               {reportStatuses.map((item) => (
                 <option key={item} value={item}>
-                  {item}
+                  {item === "All" ? item : statusLabel(item)}
                 </option>
               ))}
             </select>
@@ -247,7 +248,7 @@ export function AdminReportsPage() {
                           {f.averageScore.toFixed(1)}
                         </span>
                       </td>
-                      <td className="text-slate-700">{f.status}</td>
+                      <td className="text-slate-700">{statusLabel(f.status)}</td>
                     </tr>
                   );
                 })}

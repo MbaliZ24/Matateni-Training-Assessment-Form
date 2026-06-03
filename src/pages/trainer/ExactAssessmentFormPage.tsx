@@ -93,7 +93,10 @@ function TextInput({
   onChange,
   readOnly,
   type = "text",
-  min
+  min,
+  required = false,
+  helpText,
+  error
 }: {
   label: string;
   placeholder?: string;
@@ -102,10 +105,16 @@ function TextInput({
   readOnly?: boolean;
   type?: "text" | "date" | "number";
   min?: number;
+  required?: boolean;
+  helpText?: string;
+  error?: string;
 }) {
   return (
     <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-      {label}
+      <span>
+        {label}
+        {required ? <span className="ml-1 text-rose-600">*</span> : null}
+      </span>
       <input
         type={type}
         min={min}
@@ -114,8 +123,12 @@ function TextInput({
         value={value}
         readOnly={readOnly}
         onChange={(event) => onChange?.(event.target.value)}
-        className="rounded-lg border border-brand-line bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100"
+        className={`rounded-lg border bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100 ${
+          error ? "border-rose-300 bg-rose-50/40" : "border-brand-line"
+        }`}
       />
+      {error ? <span className="text-xs font-medium text-rose-700">{error}</span> : null}
+      {!error && helpText ? <span className="text-xs font-normal text-slate-500">{helpText}</span> : null}
     </label>
   );
 }
@@ -126,7 +139,10 @@ function TextArea({
   value,
   onChange,
   readOnly = false,
-  placeholder
+  placeholder,
+  required = false,
+  helpText,
+  error
 }: {
   label: string;
   rows?: number;
@@ -134,10 +150,16 @@ function TextArea({
   onChange?: (value: string) => void;
   readOnly?: boolean;
   placeholder?: string;
+  required?: boolean;
+  helpText?: string;
+  error?: string;
 }) {
   return (
     <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-      {label}
+      <span>
+        {label}
+        {required ? <span className="ml-1 text-rose-600">*</span> : null}
+      </span>
       <textarea
         title={label}
         rows={rows}
@@ -145,8 +167,12 @@ function TextArea({
         readOnly={readOnly}
         placeholder={placeholder}
         onChange={(event) => onChange?.(event.target.value)}
-        className="rounded-lg border border-brand-line bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100"
+        className={`rounded-lg border bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100 ${
+          error ? "border-rose-300 bg-rose-50/40" : "border-brand-line"
+        }`}
       />
+      {error ? <span className="text-xs font-medium text-rose-700">{error}</span> : null}
+      {!error && helpText ? <span className="text-xs font-normal text-slate-500">{helpText}</span> : null}
     </label>
   );
 }
@@ -236,6 +262,8 @@ function SignaturePad({
   const isDrawingRef = useRef(false);
   const pointerIdRef = useRef<number | null>(null);
   const lastSyncedImageRef = useRef<string>("");
+  const [signatureMethod, setSignatureMethod] = useState<"draw" | "type" | "upload">("draw");
+  const [typedSignature, setTypedSignature] = useState("");
 
   useEffect(() => {
     if (isDrawingRef.current) return;
@@ -305,8 +333,57 @@ function SignaturePad({
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
 
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const syncCanvasImage = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const data = canvas.toDataURL("image/png");
+    lastSyncedImageRef.current = data;
+    onImageChange?.(data);
+    onSignedChange?.(true);
+  };
+
+  const renderTypedSignature = (value: string) => {
+    const text = value.trim();
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+
+    clearCanvas();
+    if (!text) {
+      lastSyncedImageRef.current = "";
+      onImageChange?.(null);
+      onSignedChange?.(false);
+      return;
+    }
+
+    const cssHeight = canvas.clientHeight || 64;
+    const cssWidth = canvas.clientWidth || 320;
+    const horizontalPadding = 12;
+    const availableWidth = Math.max(cssWidth - horizontalPadding * 2, 80);
+    let fontSize = 28;
+
+    // Reduce the font size until the typed signature fits inside the signature area.
+    do {
+      context.font = `${fontSize}px 'Segoe Script', 'Brush Script MT', cursive`;
+      if (context.measureText(text).width <= availableWidth || fontSize <= 16) break;
+      fontSize -= 1;
+    } while (fontSize > 16);
+
+    context.fillStyle = "#1c1b34";
+    context.textBaseline = "middle";
+    context.fillText(text, horizontalPadding, cssHeight / 2);
+    syncCanvasImage();
+  };
+
   const startDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (disabled) return;
+    if (disabled || signatureMethod !== "draw") return;
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
@@ -322,7 +399,7 @@ function SignaturePad({
   };
 
   const draw = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (disabled) return;
+    if (disabled || signatureMethod !== "draw") return;
     if (!isDrawingRef.current) return;
     if (pointerIdRef.current !== null && event.pointerId !== pointerIdRef.current) return;
 
@@ -337,24 +414,17 @@ function SignaturePad({
   };
 
   const endDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (disabled) return;
+    if (disabled || signatureMethod !== "draw") return;
     if (pointerIdRef.current !== null && event.pointerId !== pointerIdRef.current) return;
     isDrawingRef.current = false;
     pointerIdRef.current = null;
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const data = canvas.toDataURL("image/png");
-      lastSyncedImageRef.current = data;
-      onImageChange?.(data);
-    }
+    if (canvasRef.current) syncCanvasImage();
   };
 
   const clearSignature = () => {
     if (disabled) return;
-    const canvas = canvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) return;
-    context.clearRect(0, 0, canvas.width, canvas.height);
+    clearCanvas();
+    setTypedSignature("");
     lastSyncedImageRef.current = "";
     onImageChange?.(null);
     onSignedChange?.(false);
@@ -380,10 +450,7 @@ function SignaturePad({
           const cssHeight = canvas.clientHeight || 1;
           context.clearRect(0, 0, canvas.width, canvas.height);
           context.drawImage(img, 0, 0, cssWidth, cssHeight);
-          const imageFromCanvas = canvas.toDataURL("image/png");
-          lastSyncedImageRef.current = imageFromCanvas;
-          onImageChange?.(imageFromCanvas);
-          onSignedChange?.(true);
+          syncCanvasImage();
         };
         img.src = result;
         return;
@@ -398,29 +465,17 @@ function SignaturePad({
   return (
     <div className="space-y-1">
       <p className="text-xs text-slate-500">{label}</p>
-      <div ref={containerRef} className="rounded-lg border border-brand-line bg-white">
-        <canvas
-          title={label}
-          ref={canvasRef}
-          onPointerDown={startDrawing}
-          onPointerMove={draw}
-          onPointerUp={endDrawing}
-          onPointerLeave={endDrawing}
-          onPointerCancel={endDrawing}
-          className={`h-16 w-full touch-none rounded-lg ${disabled ? "cursor-not-allowed opacity-70" : ""}`}
-        />
-      </div>
-      <div className="flex items-center gap-3">
-        <label className="cursor-pointer text-[11px] font-medium text-slate-600 transition hover:text-brand-ruby">
-          Upload image
-          <input
-            type="file"
-            accept="image/*"
-            onChange={onUploadSignature}
-            disabled={disabled}
-            className="hidden"
-          />
-        </label>
+      <div className="flex items-center gap-2">
+        <select
+          value={signatureMethod}
+          onChange={(event) => setSignatureMethod(event.target.value as "draw" | "type" | "upload")}
+          disabled={disabled}
+          className="rounded-lg border border-brand-line bg-white px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-brand-ruby focus:ring-2 focus:ring-red-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+        >
+          <option value="draw">Draw signature</option>
+          <option value="type">Type signature</option>
+          <option value="upload">Upload image</option>
+        </select>
         <button
           type="button"
           onClick={clearSignature}
@@ -430,6 +485,52 @@ function SignaturePad({
           Clear
         </button>
       </div>
+      <div ref={containerRef} className="rounded-lg border border-brand-line bg-white">
+        <canvas
+          title={label}
+          ref={canvasRef}
+          onPointerDown={startDrawing}
+          onPointerMove={draw}
+          onPointerUp={endDrawing}
+          onPointerLeave={endDrawing}
+          onPointerCancel={endDrawing}
+          className={`h-16 w-full rounded-lg ${signatureMethod === "draw" ? "touch-none" : ""} ${
+            disabled || signatureMethod !== "draw" ? "cursor-not-allowed opacity-70" : ""
+          }`}
+        />
+      </div>
+      {signatureMethod === "type" ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            type="text"
+            value={typedSignature}
+            onChange={(event) => setTypedSignature(event.target.value)}
+            placeholder="Type full signature"
+            disabled={disabled}
+            className="flex-1 rounded-lg border border-brand-line bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-ruby focus:ring-2 focus:ring-red-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+          />
+          <button
+            type="button"
+            onClick={() => renderTypedSignature(typedSignature)}
+            disabled={disabled}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-brand-ruby hover:text-brand-ruby disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Apply typed signature
+          </button>
+        </div>
+      ) : null}
+      {signatureMethod === "upload" ? (
+        <label className="inline-flex cursor-pointer items-center gap-2 text-[11px] font-medium text-slate-600 transition hover:text-brand-ruby">
+          <span>Choose signature image</span>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={onUploadSignature}
+            disabled={disabled}
+            className="hidden"
+          />
+        </label>
+      ) : null}
     </div>
   );
 }
@@ -464,6 +565,8 @@ type TrainerDraft = {
   observedImprovementDetails: string;
   supportNeeded: string;
   barriersComment: string;
+  trainerApplicationComment: string;
+  supervisorApplicationComment: string;
   workedWellComment: string;
   effectivenessRating: string;
   recommendationChoice: string;
@@ -522,15 +625,24 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   const [observedImprovementDetails, setObservedImprovementDetails] = useState(submittedData?.observedImprovementDetails ?? "");
   const [supportNeeded, setSupportNeeded] = useState(submittedData?.supportNeeded ?? "");
   const [barriersComment, setBarriersComment] = useState(submittedData?.barriersComment ?? "");
+  const [trainerApplicationComment, setTrainerApplicationComment] = useState(
+    submittedData?.trainerApplicationComment ?? submittedData?.barriersComment ?? ""
+  );
+  const [supervisorApplicationComment, setSupervisorApplicationComment] = useState(
+    submittedData?.supervisorApplicationComment ?? ""
+  );
   const [workedWellComment, setWorkedWellComment] = useState(submittedData?.workedWellComment ?? "");
   const [effectivenessRating, setEffectivenessRating] = useState(submittedData?.effectivenessRating ?? "");
   const [recommendationChoice, setRecommendationChoice] = useState(submittedData?.recommendationChoice ?? "");
   const [trainerFutureSessionComment, setTrainerFutureSessionComment] = useState(submittedData?.trainerFutureSessionComment ?? "");
   const [supervisorFutureSessionComment, setSupervisorFutureSessionComment] = useState(submittedData?.supervisorFutureSessionComment ?? "");
   const [signOff, setSignOff] = useState({
-    trainerName: submittedData?.signOff?.trainerName ?? currentUser?.name ?? "",
+    trainerName:
+      submittedData?.signOff?.trainerName ??
+      submittedData?.trainerName ??
+      (currentUser?.role === "trainer" ? currentUser.name ?? currentUser.email ?? "" : ""),
     trainerDate: submittedData?.signOff?.trainerDate ?? "",
-    supervisorName: submittedData?.signOff?.supervisorName ?? "",
+    supervisorName: submittedData?.signOff?.supervisorName ?? submittedData?.followUpSupervisorName ?? "",
     supervisorDate: submittedData?.signOff?.supervisorDate ?? ""
   });
   const [signatures, setSignatures] = useState({
@@ -552,6 +664,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   });
   const [supervisorReturnReason, setSupervisorReturnReason] = useState("");
   const [supervisorActionError, setSupervisorActionError] = useState("");
+  const [showValidationHints, setShowValidationHints] = useState(false);
 
   const [ratings, setRatings] = useState<(number | null)[]>(Array(feedbackStatements.length).fill(null));
   const [traineeRoster, setTraineeRoster] = useState<TraineeRosterItem[]>(
@@ -578,6 +691,66 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     const passed = evaluated.filter((t) => t.understanding === "Yes" && t.independent === "Yes").length;
     return `${passed} / ${evaluated.length} trainees`;
   }, [trainees]);
+
+  const assignedSupervisorName = useMemo(() => {
+    if (!currentUser?.supervisorId) return "";
+    const assignedSupervisor = users.find(
+      (user) => user.id === currentUser.supervisorId && user.role === "supervisor"
+    );
+    return assignedSupervisor?.name?.trim() || assignedSupervisor?.email || "";
+  }, [currentUser?.supervisorId, users]);
+
+  const currentSupervisorName = useMemo(() => {
+    if (currentUser?.role !== "supervisor") return "";
+    return currentUser.name?.trim() || currentUser.email || "";
+  }, [currentUser?.email, currentUser?.name, currentUser?.role]);
+
+  useEffect(() => {
+    if (!assignedSupervisorName) return;
+    setFollowUpSupervisorName((currentValue) => currentValue || assignedSupervisorName);
+    setSignOff((currentValue) =>
+      currentValue.supervisorName
+        ? currentValue
+        : { ...currentValue, supervisorName: assignedSupervisorName }
+    );
+  }, [assignedSupervisorName]);
+
+  useEffect(() => {
+    // When the supervisor opens the review flow, default the sign-off identity to the signed-in reviewer.
+    if (!(readOnly || userRole === "supervisor") || !currentSupervisorName) return;
+    setSignOff((currentValue) =>
+      currentValue.supervisorName
+        ? currentValue
+        : { ...currentValue, supervisorName: currentSupervisorName }
+    );
+  }, [currentSupervisorName, readOnly, userRole]);
+
+  useEffect(() => {
+    const normalizedTrainerName = trainerName?.trim() || "";
+    if (!normalizedTrainerName) return;
+
+    setSignOff((currentValue) => {
+      const currentTrainerSignOffName = currentValue.trainerName?.trim() || "";
+      const shouldSyncTrainerName =
+        !currentTrainerSignOffName ||
+        (currentSupervisorName && currentTrainerSignOffName === currentSupervisorName);
+
+      return shouldSyncTrainerName && currentTrainerSignOffName !== normalizedTrainerName
+        ? { ...currentValue, trainerName: normalizedTrainerName }
+        : currentValue;
+    });
+  }, [currentSupervisorName, trainerName]);
+
+  useEffect(() => {
+    const normalizedSupervisorName = followUpSupervisorName?.trim() || currentSupervisorName || "";
+    if (!normalizedSupervisorName) return;
+
+    setSignOff((currentValue) =>
+      currentValue.supervisorName?.trim()
+        ? currentValue
+        : { ...currentValue, supervisorName: normalizedSupervisorName }
+    );
+  }, [currentSupervisorName, followUpSupervisorName]);
 
 
   const submissionIntegrity = useMemo(() => {
@@ -606,10 +779,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       },
       {
         key: "D",
-        label: "Section D · Skills & Follow-up",
+        label: "Section E · Workplace Application & Follow-Up",
         ok:
           hasEvaluatedTrainees &&
-          followUpSupervisorName.trim().length > 0 &&
           applicationExtent.trim().length > 0 &&
           observedImprovement !== "" &&
           (observedImprovement === "No" || observedImprovementDetails.trim().length > 0) &&
@@ -617,7 +789,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       },
       {
         key: "F",
-        label: "Section F · Reflection",
+        label: "Section F · Overall Trainer Reflection & Improvement",
         ok:
           workedWellComment.trim().length > 0 &&
           trainerFutureSessionComment.trim().length > 0 &&
@@ -634,10 +806,11 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       }
     ] as const;
 
-    const missing = checks.filter((c) => !c.ok).map((c) => c.label);
+    const missingEntries = checks.filter((c) => !c.ok);
     return {
-      complete: missing.length === 0,
-      missing
+      complete: missingEntries.length === 0,
+      missing: missingEntries.map((c) => c.label),
+      firstMissingKey: missingEntries[0]?.key
     };
   }, [
     trainerName,
@@ -674,6 +847,31 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       numberOfTrainees.trim().length > 0 &&
       hasObjectiveContent,
     [trainerName, trainerDepartment, trainingTitle, trainingDate, numberOfTrainees, hasObjectiveContent]
+  );
+
+  const draftFieldErrors = useMemo(
+    () => ({
+      trainerName: trainerName.trim().length === 0 ? "Enter the trainer's name." : "",
+      trainerDepartment: trainerDepartment.trim().length === 0 ? "Enter the trainer's department or role." : "",
+      trainingTitle: trainingTitle.trim().length === 0 ? "Enter the training title or topic." : "",
+      trainingDate: trainingDate.trim().length === 0 ? "Select the training date." : "",
+      numberOfTrainees: numberOfTrainees.trim().length === 0 ? "Select how many trainees attended." : "",
+      objectives: hasObjectiveContent ? "" : "Add at least one training objective.",
+      trainingFormats: trainingFormats.length > 0 ? "" : "Select one training format.",
+      targetUserGroup: targetUserGroup.trim().length > 0 ? "" : "Describe who attended or will attend this training.",
+      feedbackDeadline: feedbackDeadline.trim().length > 0 ? "" : "Set the trainee feedback deadline before saving the draft."
+    }),
+    [
+      trainerName,
+      trainerDepartment,
+      trainingTitle,
+      trainingDate,
+      numberOfTrainees,
+      hasObjectiveContent,
+      trainingFormats,
+      targetUserGroup,
+      feedbackDeadline
+    ]
   );
 
   const effectiveDistributedFormId = useMemo(() => {
@@ -803,6 +1001,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       setObservedImprovementDetails(parsed.observedImprovementDetails ?? "");
       setSupportNeeded(parsed.supportNeeded ?? "");
       setBarriersComment(parsed.barriersComment ?? "");
+      setTrainerApplicationComment(parsed.trainerApplicationComment ?? parsed.barriersComment ?? "");
+      setSupervisorApplicationComment(parsed.supervisorApplicationComment ?? "");
       setWorkedWellComment(parsed.workedWellComment ?? "");
       setEffectivenessRating(parsed.effectivenessRating ?? "");
       setRecommendationChoice(parsed.recommendationChoice ?? "");
@@ -820,9 +1020,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       );
       setSignOff(
         parsed.signOff ?? {
-          trainerName: currentUser?.name ?? "",
+          trainerName: parsed.trainerName ?? (currentUser?.role === "trainer" ? currentUser.name ?? currentUser.email ?? "" : ""),
           trainerDate: "",
-          supervisorName: "",
+          supervisorName: parsed.followUpSupervisorName ?? "",
           supervisorDate: ""
         }
       );
@@ -900,6 +1100,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     setObservedImprovementDetails(saved.observedImprovementDetails ?? "");
     setSupportNeeded(saved.supportNeeded ?? "");
     setBarriersComment(saved.barriersComment ?? "");
+    setTrainerApplicationComment(saved.trainerApplicationComment ?? saved.barriersComment ?? "");
+    setSupervisorApplicationComment(saved.supervisorApplicationComment ?? "");
     setWorkedWellComment(saved.workedWellComment ?? "");
     setEffectivenessRating(saved.effectivenessRating ?? "");
     setRecommendationChoice(saved.recommendationChoice ?? "");
@@ -917,14 +1119,17 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         : { trainer: false, supervisor: false, trainerImage: "", supervisorImage: "" }
     );
     setSignOff({
-      trainerName: saved.signOff?.trainerName ?? currentUser?.name ?? "",
+      trainerName:
+        saved.signOff?.trainerName ??
+        saved.trainerName ??
+        (currentUser?.role === "trainer" ? currentUser.name ?? currentUser.email ?? "" : ""),
       trainerDate: saved.signOff?.trainerDate ?? "",
-      supervisorName: saved.signOff?.supervisorName ?? "",
+      supervisorName: saved.signOff?.supervisorName ?? saved.followUpSupervisorName ?? "",
       supervisorDate: saved.signOff?.supervisorDate ?? ""
     });
     setTraineeRoster(saved.traineeRoster?.length ? saved.traineeRoster : [createEmptyRosterItem()]);
     setRehydratedFromLinkedForm(true);
-  }, [userRole, rehydratedFromLinkedForm, draftRestored, linkedForm, currentUser?.name]);
+  }, [userRole, rehydratedFromLinkedForm, draftRestored, linkedForm, currentUser?.email, currentUser?.name, currentUser?.role]);
 
   useEffect(() => {
     if (!draftStorageKey) return;
@@ -948,6 +1153,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       observedImprovementDetails,
       supportNeeded,
       barriersComment,
+      trainerApplicationComment,
+      supervisorApplicationComment,
       workedWellComment,
       effectivenessRating,
       recommendationChoice,
@@ -978,6 +1185,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       observedImprovementDetails.trim().length > 0 ||
       supportNeeded.trim().length > 0 ||
       barriersComment.trim().length > 0 ||
+      trainerApplicationComment.trim().length > 0 ||
+      supervisorApplicationComment.trim().length > 0 ||
       workedWellComment.trim().length > 0 ||
       effectivenessRating.trim().length > 0 ||
       recommendationChoice.trim().length > 0 ||
@@ -1088,7 +1297,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   useEffect(() => {
     if (userRole !== "trainer") return;
     if (!linkedForm) return;
-    if (linkedForm.status !== "Draft" && linkedForm.status !== "Needs Correction") return;
+    if (
+      linkedForm.status !== "DRAFT" &&
+      linkedForm.status !== "OPENFORFEEDBACK" &&
+      linkedForm.status !== "FEEDBACKCLOSED" &&
+      linkedForm.status !== "FOLLOWUPPENDING"
+    )
+      return;
 
     // Keep editable drafts synced into the saved form record so logout/login does not drop in-progress work.
     const nextSubmittedData = buildSubmittedData();
@@ -1115,6 +1330,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       department: trainerDepartment || linkedForm.department,
       date: trainingDate || linkedForm.date,
       trainees: Number(numberOfTrainees) || traineeRoster.length || linkedForm.trainees,
+      updatedAt: new Date().toISOString(),
       submittedData: nextSubmittedData
     });
   }, [
@@ -1138,6 +1354,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     observedImprovementDetails,
     supportNeeded,
     barriersComment,
+    trainerApplicationComment,
+    supervisorApplicationComment,
     workedWellComment,
     effectivenessRating,
     recommendationChoice,
@@ -1241,7 +1459,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     applicationExtent,
     observedImprovementDetails,
     supportNeeded,
-    barriersComment,
+    barriersComment: trainerApplicationComment,
+    trainerApplicationComment,
+    supervisorApplicationComment,
     workedWellComment,
     effectivenessRating,
     recommendationChoice,
@@ -1298,6 +1518,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
 
   const handleSubmit = async () => {
     if (readOnly && userRole !== "supervisor") return;
+    setShowValidationHints(true);
 
     if (userRole !== "supervisor" && !hasAnyFormInput()) {
       setSubmitModal({
@@ -1330,6 +1551,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
             title: "Complete A+B First",
             message: "Please complete Sections A and B before saving this training form to My Submissions."
           });
+          setActiveSection("A");
+          window.scrollTo({ top: 0, behavior: "smooth" });
           return;
         }
 
@@ -1340,6 +1563,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
             title: "Set Feedback Deadline",
             message: "Please set the trainee feedback deadline before saving this draft."
           });
+          setActiveSection("A");
+          window.scrollTo({ top: 0, behavior: "smooth" });
           return;
         }
 
@@ -1383,9 +1608,10 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
             existingForm && existingForm.feedbackResponses > 0
               ? existingForm.averageScore
               : computedAverageScore,
-          status: "Draft",
+          status: "DRAFT",
           recommendation: "Draft in progress",
           createdAt: existingForm?.createdAt ?? new Date().toISOString().slice(0, 10),
+          updatedAt: new Date().toISOString(),
           submittedData: draftPayload,
           supervisorOnlyFeedback: existingForm?.supervisorOnlyFeedback
         });
@@ -1416,6 +1642,10 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       }
 
       if (!submissionIntegrity.complete) {
+        if (submissionIntegrity.firstMissingKey) {
+          setActiveSection(submissionIntegrity.firstMissingKey);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
         setSubmitModal({
           open: true,
           kind: "error",
@@ -1468,11 +1698,11 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           SkillApplicationLevel: applicationExtent,
           PerformanceImproved: observedImprovement === "Yes",
           SupportNeeded: supportNeeded,
-          Comments: barriersComment || null,
+          Comments: trainerApplicationComment || "",
           WhatWorkedWell: workedWellComment,
           Improvements: trainerFutureSessionComment,
-          TrainerComment: trainerFutureSessionComment,
-          SupervisorComment: supervisorFutureSessionComment || null,
+          TrainerComment: trainerApplicationComment || "",
+          SupervisorComment: supervisorApplicationComment || "",
           EffectivenessRating: effectivenessRating,
           Recommendation: recommendationChoice,
           TrainerName: trainerName || currentUser?.name || currentUser?.email || "Trainer",
@@ -1506,9 +1736,10 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
             ? existingForm.averageScore
             : computedAverageScore,
         // Once trainer submits, it becomes an actual submission.
-        status: "Submitted",
+        status: "TRAINERASSESSMENTPENDING",
         recommendation: "Pending supervisor review",
         createdAt: existingForm?.createdAt ?? new Date().toISOString().slice(0, 10),
+        updatedAt: new Date().toISOString(),
         submittedAt: new Date().toISOString().slice(0, 10),
         submittedData: draftPayload,
         supervisorOnlyFeedback: existingForm?.supervisorOnlyFeedback
@@ -1549,7 +1780,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       });
       addForm({
         ...linkedForm,
-        status: "Approved",
+        status: "COMPLETED",
+        updatedAt: new Date().toISOString(),
         submittedData: {
           trainerName,
           trainerDepartment,
@@ -1573,7 +1805,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           applicationExtent,
           observedImprovementDetails,
           supportNeeded,
-          barriersComment,
+          barriersComment: trainerApplicationComment,
+          trainerApplicationComment,
+          supervisorApplicationComment,
           workedWellComment,
           effectivenessRating,
           recommendationChoice,
@@ -1634,7 +1868,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     }
     addForm({
       ...linkedForm,
-      status: "Needs Correction",
+      status: "FOLLOWUPPENDING",
+      updatedAt: new Date().toISOString(),
       submittedData: {
         trainerName,
         trainerDepartment,
@@ -1658,7 +1893,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         applicationExtent,
         observedImprovementDetails,
         supportNeeded,
-        barriersComment,
+        barriersComment: trainerApplicationComment,
+        trainerApplicationComment,
+        supervisorApplicationComment,
         workedWellComment,
         effectivenessRating,
         recommendationChoice,
@@ -1735,33 +1972,38 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           </div>
         </header>
 
+        {!isSupervisorReviewMode && linkedForm?.status === "FOLLOWUPPENDING" ? (
+          <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-panel">
+            <p className="font-semibold">Returned for correction</p>
+            <p className="mt-1 text-xs">
+              {linkedForm.supervisorReview?.comments || "The supervisor requested updates before approval."}
+            </p>
+            {(linkedForm.supervisorReview?.actionItems?.length ?? 0) > 0 ? (
+              <ul className="mt-2 list-disc pl-4 text-xs">
+                {linkedForm.supervisorReview?.actionItems.map((item, index) => (
+                  <li key={`${item}-${index}`}>{item}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+
+        {!isSupervisorReviewMode &&
+        (linkedForm?.status === "DRAFT" ||
+          linkedForm?.status === "OPENFORFEEDBACK" ||
+          linkedForm?.status === "FEEDBACKCLOSED") ? (
+          <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 shadow-panel">
+            <p className="font-semibold">Editable draft</p>
+            <p className="mt-1 text-xs">
+              This draft updates automatically while you work. Last updated: {new Date(linkedForm.updatedAt ?? linkedForm.createdAt).toLocaleString()}.
+            </p>
+          </div>
+        ) : null}
+
         {isSupervisorReviewMode ? (
           <div className="mb-5 space-y-3">
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-panel">
               Supervisor review mode: trainer-submitted sections are shown for assessment and approval.
-            </div>
-            <div
-              className={`rounded-xl border px-4 py-3 text-sm shadow-panel ${
-                submissionIntegrity.complete
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                  : "border-rose-200 bg-rose-50 text-rose-800"
-              }`}
-            >
-              <p className="font-semibold">
-                Submission Integrity Check: {submissionIntegrity.complete ? "Complete" : "Incomplete"}
-              </p>
-              {submissionIntegrity.complete ? (
-                <p className="mt-1 text-xs">All required sections and mandatory trainer fields are complete.</p>
-              ) : (
-                <div className="mt-1">
-                  <p className="text-xs">Missing required sections or fields:</p>
-                  <ul className="mt-1 list-disc pl-4 text-xs">
-                    {submissionIntegrity.missing.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
           </div>
         ) : null}
@@ -1770,36 +2012,55 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           {activeSection === "A" && visibleSections.includes("A") ? (
           <Card section="A" title="Training Information" owner="Trainer" disabled={isSupervisorReviewMode}>
             <div className="grid gap-4 md:grid-cols-2">
-              <TextInput label="Trainer’s Name" value={trainerName} onChange={setTrainerName} readOnly={isSupervisorReviewMode} />
-              <TextInput label="Trainer’s Department/Role" value={trainerDepartment} onChange={setTrainerDepartment} readOnly={isSupervisorReviewMode} />
-              <TextInput label="Training Title / Topic" value={trainingTitle} onChange={setTrainingTitle} readOnly={isSupervisorReviewMode} />
-              <TextInput label="Training Date" type="date" value={trainingDate} onChange={setTrainingDate} />
+              <TextInput label="Trainer’s Name" value={trainerName} onChange={setTrainerName} readOnly={isSupervisorReviewMode} required error={showValidationHints ? draftFieldErrors.trainerName : ""} />
+              <TextInput label="Trainer’s Department/Role" value={trainerDepartment} onChange={setTrainerDepartment} readOnly={isSupervisorReviewMode} required error={showValidationHints ? draftFieldErrors.trainerDepartment : ""} />
+              <TextInput label="Training Title / Topic" value={trainingTitle} onChange={setTrainingTitle} readOnly={isSupervisorReviewMode} required helpText="Use a clear title that will still make sense in reports." error={showValidationHints ? draftFieldErrors.trainingTitle : ""} />
+              <TextInput label="Training Date" type="date" value={trainingDate} onChange={setTrainingDate} required error={showValidationHints ? draftFieldErrors.trainingDate : ""} />
               <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <TextInput
-                    label="Training Duration (Days)"
-                    type="number"
-                    min={0}
-                    placeholder="e.g. 2"
-                    value={trainingDurationDays}
-                    onChange={setTrainingDurationDays}
-                  />
-                  <TextInput
-                    label="Training Duration (Hours)"
-                    type="number"
-                    min={0}
-                    placeholder="e.g. 4"
-                    value={trainingDurationHours}
-                    onChange={setTrainingDurationHours}
-                  />
-                </div>
                 <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-                  Number of Trainees
+                  <span>Training Duration</span>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="2"
+                          value={trainingDurationDays}
+                          onChange={(event) => setTrainingDurationDays(event.target.value)}
+                          className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                        />
+                        <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Days</span>
+                      </label>
+                      <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="4"
+                          value={trainingDurationHours}
+                          onChange={(event) => setTrainingDurationHours(event.target.value)}
+                          className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                        />
+                        <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Hours</span>
+                      </label>
+                    </div>
+                    <p className="mt-2 text-xs font-normal text-slate-500">
+                      Capture the full duration in the format that best reflects the session, such as 2 days or 4 hours.
+                    </p>
+                  </div>
+                </label>
+                <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                  <span>
+                    Number of Trainees
+                    <span className="ml-1 text-rose-600">*</span>
+                  </span>
                   <select
                     value={numberOfTrainees}
                     onChange={(event) => setNumberOfTrainees(event.target.value)}
                     disabled={isSupervisorReviewMode}
-                    className="rounded-lg border border-brand-line bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100"
+                    className={`rounded-lg border bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100 ${
+                      showValidationHints && draftFieldErrors.numberOfTrainees ? "border-rose-300 bg-rose-50/40" : "border-brand-line"
+                    }`}
                   >
                     <option value="">Select number</option>
                     {Array.from({ length: 100 }, (_, i) => i + 1).map((count) => (
@@ -1808,6 +2069,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                       </option>
                     ))}
                   </select>
+                  {showValidationHints && draftFieldErrors.numberOfTrainees ? (
+                    <span className="text-xs font-medium text-rose-700">{draftFieldErrors.numberOfTrainees}</span>
+                  ) : null}
                 </label>
               </div>
 
@@ -1824,6 +2088,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                     />
                   ))}
                 </div>
+                {showValidationHints && draftFieldErrors.trainingFormats ? (
+                  <p className="mt-2 text-xs font-medium text-rose-700">{draftFieldErrors.trainingFormats}</p>
+                ) : null}
               </div>
               <div className="md:col-span-2">
                 <TextInput
@@ -1831,6 +2098,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                   value={targetUserGroup}
                   onChange={setTargetUserGroup}
                   readOnly={isSupervisorReviewMode}
+                  required
+                  helpText="This helps later reporting and follow-up discussions."
+                  error={showValidationHints ? draftFieldErrors.targetUserGroup : ""}
                 />
               </div>
 
@@ -1841,6 +2111,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           {activeSection === "A" && visibleSections.includes("A") ? (
           <Card section="B" title="Training Objectives" owner="Trainer" disabled={isSupervisorReviewMode}>
             <p className="mb-3 text-sm text-slate-600">Please list the key learning objectives for this training session.</p>
+            {showValidationHints && draftFieldErrors.objectives ? (
+              <p className="mb-3 text-xs font-medium text-rose-700">{draftFieldErrors.objectives}</p>
+            ) : null}
             <div className="space-y-3">
               {objectives.map((objective, index) => {
                 const trimmed = objective.trim();
@@ -1902,13 +2175,23 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
             <div className="space-y-4 p-5 md:p-6">
               <div className="grid gap-4 md:grid-cols-[minmax(0,1fr),auto] md:items-end">
                 <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-                  Feedback submission deadline
+                  <span>
+                    Feedback submission deadline
+                    <span className="ml-1 text-rose-600">*</span>
+                  </span>
                   <input
                     type="datetime-local"
                     value={feedbackDeadline}
                     onChange={(event) => setFeedbackDeadline(event.target.value)}
-                    className="rounded-lg border border-brand-line bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100"
+                    className={`rounded-lg border bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100 ${
+                      showValidationHints && draftFieldErrors.feedbackDeadline ? "border-rose-300 bg-rose-50/40" : "border-brand-line"
+                    }`}
                   />
+                  {showValidationHints && draftFieldErrors.feedbackDeadline ? (
+                    <span className="text-xs font-medium text-rose-700">{draftFieldErrors.feedbackDeadline}</span>
+                  ) : (
+                    <span className="text-xs font-normal text-slate-500">Choose when the trainee feedback link should stop accepting responses.</span>
+                  )}
                 </label>
                 {isDraftSetupStage ? (
                   <div className="rounded-xl border border-dashed border-brand-line bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -1971,58 +2254,43 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           ) : null}
 
           {activeSection === "D" && visibleSections.includes("D") ? (
-          <Card section="D" title="Knowledge / Skills Check + Workplace Follow-up" owner="Trainer" disabled={isSupervisorReviewMode}>
+          <Card section="E" title="Workplace Application & Follow-Up" owner="Trainer" disabled={false}>
             <p className="mb-3 text-sm text-slate-600">Complete after training, based on observation, Q&A, or practical test.</p>
 
-            <div className="mb-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setTrainees((prev) => [...prev, createEmptyTrainee()])}
-                className="rounded-lg border border-brand-line bg-white px-3 py-2 text-sm font-medium text-brand-ink transition hover:border-brand-ruby hover:text-brand-ruby"
-              >
-                + Add Trainee
-              </button>
-            </div>
+            <p className="mb-3 text-sm font-semibold text-brand-ruby">Knowledge / Skills Check</p>
 
             {/* Desktop table view */}
             <div className="hidden overflow-x-auto md:block">
               <table className="min-w-full border-collapse rounded-lg border border-brand-line text-sm">
                 <thead className="bg-slate-100 text-slate-700">
                   <tr>
-                    <th className={`${tableCell} sticky top-0 z-10 bg-slate-100 text-left`}>Trainee Name (optional)</th>
+                    <th className={`${tableCell} sticky top-0 z-10 bg-slate-100 text-left`}>Trainee Name</th>
                     <th className={`${tableCell} sticky top-0 z-10 bg-slate-100 text-center`}>Demonstrated understanding</th>
                     <th className={`${tableCell} sticky top-0 z-10 bg-slate-100 text-center`}>Able to perform task without support</th>
                     <th className={`${tableCell} sticky top-0 z-10 bg-slate-100 text-center`}>Status</th>
-                    <th className={`${tableCell} sticky top-0 z-10 bg-slate-100 text-center`}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {trainees.map((trainee, index) => {
                     const isEvaluated = trainee.understanding !== "" && trainee.independent !== "";
                     const isPass = trainee.understanding === "Yes" && trainee.independent === "Yes";
+                    const resolvedName = trainee.name.trim() || traineeRoster[index]?.name?.trim() || `Trainee ${index + 1}`;
 
                     return (
                       <tr key={`trainee-${index}`} className="odd:bg-white even:bg-slate-50">
                         <td className={tableCell}>
                           <input
                             type="text"
-                            value={trainee.name}
-                            placeholder={`Trainee ${index + 1}`}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              setTrainees((prev) => {
-                                const next = [...prev];
-                                next[index] = { ...next[index], name: value };
-                                return next;
-                              });
-                            }}
-                            className="w-full rounded-lg border border-brand-line px-2 py-1.5 text-sm"
+                            value={resolvedName}
+                            readOnly
+                            className="w-full rounded-lg border border-brand-line bg-slate-50 px-2 py-1.5 text-sm text-slate-700 read-only:bg-slate-50"
                           />
                         </td>
                         <td className={`${tableCell} text-center`}>
                           <YesNoGroup
                             name={`understanding-${index}`}
                             value={trainee.understanding}
+                            disabled={isSupervisorReviewMode}
                             onChange={(value) => {
                               setTrainees((prev) => {
                                 const next = [...prev];
@@ -2036,6 +2304,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                           <YesNoGroup
                             name={`independent-${index}`}
                             value={trainee.independent}
+                            disabled={isSupervisorReviewMode}
                             onChange={(value) => {
                               setTrainees((prev) => {
                                 const next = [...prev];
@@ -2058,18 +2327,6 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                             {!isEvaluated ? "Pending" : isPass ? "Pass" : "Needs support"}
                           </span>
                         </td>
-                        <td className={`${tableCell} text-center`}>
-                          <button
-                            type="button"
-                            disabled={trainees.length === 1}
-                            onClick={() =>
-                              setTrainees((prev) => prev.filter((_, traineeIndex) => traineeIndex !== index))
-                            }
-                            className="text-xs font-medium text-slate-500 transition hover:text-brand-ruby disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            Remove
-                          </button>
-                        </td>
                       </tr>
                     );
                   })}
@@ -2082,11 +2339,12 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
               {trainees.map((trainee, index) => {
                 const isEvaluated = trainee.understanding !== "" && trainee.independent !== "";
                 const isPass = trainee.understanding === "Yes" && trainee.independent === "Yes";
+                const resolvedName = trainee.name.trim() || traineeRoster[index]?.name?.trim() || `Trainee ${index + 1}`;
 
                 return (
                   <div key={`trainee-mobile-${index}`} className="rounded-lg border border-brand-line bg-white p-3">
                     <div className="mb-2 flex items-center justify-between">
-                      <p className="text-sm font-semibold text-brand-ink">Trainee {index + 1}</p>
+                      <p className="text-sm font-semibold text-brand-ink">{resolvedName}</p>
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
                           !isEvaluated
@@ -2102,23 +2360,16 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                     <div className="space-y-3">
                       <input
                         type="text"
-                        value={trainee.name}
-                        placeholder={`Trainee ${index + 1}`}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setTrainees((prev) => {
-                            const next = [...prev];
-                            next[index] = { ...next[index], name: value };
-                            return next;
-                          });
-                        }}
-                        className="w-full rounded-lg border border-brand-line px-2 py-1.5 text-sm"
+                        value={resolvedName}
+                        readOnly
+                        className="w-full rounded-lg border border-brand-line bg-slate-50 px-2 py-1.5 text-sm text-slate-700 read-only:bg-slate-50"
                       />
                       <div>
                         <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Understanding</p>
                         <YesNoGroup
                           name={`understanding-mobile-${index}`}
                           value={trainee.understanding}
+                          disabled={isSupervisorReviewMode}
                           onChange={(value) => {
                             setTrainees((prev) => {
                               const next = [...prev];
@@ -2133,6 +2384,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                         <YesNoGroup
                           name={`independent-mobile-${index}`}
                           value={trainee.independent}
+                          disabled={isSupervisorReviewMode}
                           onChange={(value) => {
                             setTrainees((prev) => {
                               const next = [...prev];
@@ -2142,17 +2394,6 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                           }}
                         />
                       </div>
-                      {trainees.length > 1 ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setTrainees((prev) => prev.filter((_, traineeIndex) => traineeIndex !== index))
-                          }
-                          className="text-xs font-medium text-slate-500 transition hover:text-brand-ruby"
-                        >
-                          Remove
-                        </button>
-                      ) : null}
                     </div>
                   </div>
                 );
@@ -2164,21 +2405,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
             </div>
 
             <div className="my-6 h-px bg-slate-200" />
-            <p className="mb-3 text-sm font-semibold text-brand-ruby">
-              Workplace Application & Follow-up
-            </p>
+            <p className="mb-3 text-sm font-semibold text-brand-ruby">Workplace Application & Follow-Up</p>
             <p className="mb-3 text-sm text-slate-600">
-              To be completed by trainer with input from supervisor/line manager, 2-4 weeks post-training.
+              Complete this section 2-4 weeks after training to record how trainees are applying the training in the workplace, using input from the supervisor or line manager where needed.
             </p>
             <div className="space-y-5">
-              <TextInput
-                label="Supervisor Name"
-                value={followUpSupervisorName}
-                onChange={setFollowUpSupervisorName}
-                readOnly={isSupervisorReviewMode}
-              />
               <div>
-                <p className="mb-2 text-sm font-medium text-slate-700">To what extent have trainees applied the skills in the workplace?</p>
+                <p className="mb-2 text-sm font-medium text-slate-700">1. To what extent have trainees applied the skills in the workplace?</p>
                 <div className="flex flex-wrap gap-4">
                   {["Not at all", "Minimally", "Moderately", "Largely", "Fully"].map((item) => (
                     <CheckboxLine
@@ -2193,12 +2426,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
               </div>
 
               <div>
-                <p className="mb-2 text-sm font-medium text-slate-700">Observed improvement in performance or system use?</p>
+                <p className="mb-2 text-sm font-medium text-slate-700">2. Observed improvement in performance or system use?</p>
                 <div className="mb-3 flex gap-4">
                   <label className="inline-flex items-center gap-2 text-sm text-slate-700">
                     <input
                       type="checkbox"
                       checked={observedImprovement === "Yes"}
+                      disabled={isSupervisorReviewMode}
                       onChange={() =>
                         setObservedImprovement((prev) => (prev === "Yes" ? "" : "Yes"))
                       }
@@ -2210,6 +2444,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                     <input
                       type="checkbox"
                       checked={observedImprovement === "No"}
+                      disabled={isSupervisorReviewMode}
                       onChange={() =>
                         setObservedImprovement((prev) => (prev === "No" ? "" : "No"))
                       }
@@ -2230,7 +2465,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
               </div>
 
               <div>
-                <p className="mb-2 text-sm font-medium text-slate-700">Additional support or refresher training needed?</p>
+                <p className="mb-2 text-sm font-medium text-slate-700">3. Additional support or refresher training needed?</p>
                 <div className="flex flex-wrap gap-4">
                   {["None", "Minimal", "Significant", "Full retraining required"].map((item) => (
                     <CheckboxLine
@@ -2244,59 +2479,50 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 </div>
               </div>
 
-              <TextArea
-                label="Comments / barriers to application (e.g., time, resources, supervision)"
-                rows={4}
-                value={barriersComment}
-                onChange={setBarriersComment}
-                readOnly={isSupervisorReviewMode}
-              />
+              <div className="space-y-4">
+                <p className="text-sm font-medium text-slate-700">
+                  4. Comments / barriers to application (e.g., time, resources, supervision):
+                </p>
+                <TextArea
+                  label="Comment by trainer"
+                  rows={4}
+                  value={trainerApplicationComment}
+                  onChange={setTrainerApplicationComment}
+                  readOnly={userRole === "supervisor"}
+                />
+                <TextArea
+                  label="Comment by supervisor"
+                  rows={4}
+                  value={supervisorApplicationComment}
+                  onChange={setSupervisorApplicationComment}
+                  readOnly={userRole === "trainer"}
+                  helpText={userRole === "trainer" ? "This field is completed by the supervisor during review." : undefined}
+                />
+              </div>
             </div>
           </Card>
           ) : null}
 
           {activeSection === "F" && visibleSections.includes("F") ? (
           <Card section="F" title="Overall Trainer Reflection & Improvement" owner="Trainer" disabled={false}>
-            <div className="space-y-4">
+            <div className="space-y-6">
               <TextArea
-                label="What worked well in this training?"
+                label="1. What worked well in this training?"
                 rows={3}
                 value={workedWellComment}
                 onChange={setWorkedWellComment}
                 readOnly={isSupervisorReviewMode}
               />
-              <div className="space-y-3">
-                <p className="text-sm font-medium text-slate-700">What would you change for future sessions?</p>
-                <label className="block text-sm font-medium text-slate-700">
-                  Trainer comment
-                  <textarea
-                    rows={3}
-                    value={trainerFutureSessionComment}
-                    onChange={(event) => setTrainerFutureSessionComment(event.target.value)}
-                    readOnly={userRole === "supervisor"}
-                    placeholder="Trainer input for future sessions"
-                    className={`mt-2 w-full rounded-lg border border-brand-line px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100 ${
-                      userRole === "supervisor" ? "bg-slate-100 text-slate-500" : "bg-white"
-                    }`}
-                  />
-                </label>
-                <label className="block text-sm font-medium text-slate-700">
-                  Supervisor comment
-                  <textarea
-                    rows={3}
-                    value={supervisorFutureSessionComment}
-                    onChange={(event) => setSupervisorFutureSessionComment(event.target.value)}
-                    readOnly={userRole === "trainer"}
-                    placeholder={userRole === "trainer" ? "Supervisor will complete this field" : "Supervisor input for future sessions"}
-                    className={`mt-2 w-full rounded-lg border border-brand-line px-3 py-2.5 text-sm outline-none transition focus:border-brand-ruby focus:ring-2 focus:ring-red-100 ${
-                      userRole === "trainer" ? "bg-slate-100 text-slate-500" : "bg-white"
-                    }`}
-                  />
-                </label>
-              </div>
+              <TextArea
+                label="2. What would you change for future sessions?"
+                rows={3}
+                value={trainerFutureSessionComment}
+                onChange={setTrainerFutureSessionComment}
+                readOnly={isSupervisorReviewMode}
+              />
               <div>
-                <p className="mb-2 text-sm font-medium text-slate-700">Training effectiveness rating (overall)</p>
-                <div className="flex flex-wrap gap-4">
+                <p className="mb-3 text-sm font-medium text-slate-700">3. Training effectiveness rating (overall):</p>
+                <div className="space-y-3">
                   {["Poor", "Fair", "Good", "Very Good", "Excellent"].map((item) => (
                     <CheckboxLine
                       key={item}
@@ -2309,8 +2535,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 </div>
               </div>
               <div>
-                <p className="mb-2 text-sm font-medium text-slate-700">Recommendation</p>
-                <div className="flex flex-wrap gap-4">
+                <p className="mb-3 text-sm font-medium text-slate-700">4. Recommendation:</p>
+                <div className="space-y-3">
                   {["Proceed as is", "Minor adjustments needed", "Major revision required"].map((item) => (
                     <CheckboxLine
                       key={item}
@@ -2354,13 +2580,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                         <input
                           type="text"
                           value={key === "trainer" ? signOff.trainerName : signOff.supervisorName}
-                          onChange={(event) =>
-                            setSignOff((prev) => ({
-                              ...prev,
-                              [key === "trainer" ? "trainerName" : "supervisorName"]: event.target.value
-                            }))
-                          }
-                          readOnly={rowReadOnly}
+                          readOnly
                           className="w-full rounded-lg border border-brand-line px-2 py-1.5 read-only:bg-slate-100"
                         />
                       </td>
@@ -2439,7 +2659,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 >
                   {userRole === "trainer"
                     ? isDraftSetupStage
-                      ? "Submit Draft"
+                      ? "Save Progress"
                       : "Submit To Supervisor"
                     : userRole === "supervisor"
                       ? "Approve Submission"

@@ -2,13 +2,12 @@
 export type Role = "trainer" | "supervisor" | "admin";
 
 export type Status =
-  | "Draft"
-  | "Waiting for Feedback"
-  | "Submitted"
-  | "Under Review"
-  | "Approved"
-  | "Needs Correction"
-  | "Completed";
+  | "DRAFT"
+  | "OPENFORFEEDBACK"
+  | "FEEDBACKCLOSED"
+  | "TRAINERASSESSMENTPENDING"
+  | "FOLLOWUPPENDING"
+  | "COMPLETED";
 
 export type User = {
   id: string;
@@ -34,6 +33,7 @@ export type TrainingForm = {
   status: Status;
   recommendation: string;
   createdAt: string;
+  updatedAt?: string;
   submittedAt?: string;
   submittedData?: {
     trainerName: string;
@@ -55,6 +55,8 @@ export type TrainingForm = {
     observedImprovementDetails?: string;
     supportNeeded?: string;
     barriersComment?: string;
+    trainerApplicationComment?: string;
+    supervisorApplicationComment?: string;
     workedWellComment?: string;
     effectivenessRating?: string;
     recommendationChoice?: string;

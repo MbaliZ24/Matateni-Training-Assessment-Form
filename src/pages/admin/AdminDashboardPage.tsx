@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { useAppStore } from "../../store/app-store";
-import { isInStatuses, REVIEW_QUEUE_STATUSES } from "../../lib/form-status";
+import { isInStatuses, REVIEW_QUEUE_STATUSES, statusLabel } from "../../lib/form-status";
 
 function pct(value: number, total: number) {
   return Math.round((value / Math.max(1, total)) * 100);
@@ -30,8 +30,8 @@ export function AdminDashboardPage() {
     () => forms.filter((f) => isInStatuses(f.status, REVIEW_QUEUE_STATUSES)),
     [forms]
   );
-  const signedOffForms = useMemo(() => forms.filter((f) => f.status === "Approved"), [forms]);
-  const needsCorrectionForms = useMemo(() => forms.filter((f) => f.status === "Needs Correction"), [forms]);
+  const signedOffForms = useMemo(() => forms.filter((f) => f.status === "COMPLETED"), [forms]);
+  const needsCorrectionForms = useMemo(() => forms.filter((f) => f.status === "FOLLOWUPPENDING"), [forms]);
 
   const totalInvited = useMemo(() => forms.reduce((sum, form) => sum + form.trainees, 0), [forms]);
   const totalResponses = useMemo(() => forms.reduce((sum, form) => sum + form.feedbackResponses, 0), [forms]);
@@ -204,7 +204,7 @@ export function AdminDashboardPage() {
                 <AlertTriangle className="size-4 text-amber-600" />
                 <p className="text-sm font-semibold">Needs Correction</p>
               </div>
-              <p className="mt-1 text-sm text-slate-700">{forms.filter((f) => f.status === "Needs Correction").length} forms require trainer updates</p>
+              <p className="mt-1 text-sm text-slate-700">{forms.filter((f) => f.status === "FOLLOWUPPENDING").length} forms require trainer updates</p>
             </div>
 
             <div className="rounded-lg border border-slate-200 p-3">
@@ -245,7 +245,7 @@ export function AdminDashboardPage() {
                           <p className="font-medium text-slate-900">{event.title}</p>
                           <p className="text-xs text-slate-500">{event.id}</p>
                         </td>
-                        <td className="text-slate-700">{event.status}</td>
+                        <td className="text-slate-700">{statusLabel(event.status)}</td>
                         <td className="text-slate-700">{event.by || "-"}</td>
                       </tr>
                     ))}

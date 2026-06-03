@@ -3,13 +3,11 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { ExactAssessmentFormPage } from "./pages/trainer/ExactAssessmentFormPage";
-import { TrainerFeedbackPage } from "./pages/trainer/TrainerFeedbackPage";
 import { TrainerSubmissionsPage } from "./pages/trainer/TrainerSubmissionsPage";
 import { TrainerSubmissionViewPage } from "./pages/trainer/TrainerSubmissionViewPage";
 import { TraineeFeedbackPage } from "./pages/trainee/TraineeFeedbackPage";
 import { SupervisorDashboardPage } from "./pages/supervisor/SupervisorDashboardPage";
 import { SupervisorReportsPage } from "./pages/supervisor/SupervisorReportsPage";
-import { SupervisorArchivePage } from "./pages/supervisor/SupervisorArchivePage";
 import { ReviewSignOffPage } from "./pages/supervisor/ReviewSignOffPage";
 import { AdminDashboardPage } from "./pages/admin/AdminDashboardPage";
 import { AdminUsersRolesPage } from "./pages/admin/AdminUsersRolesPage";
@@ -51,7 +49,6 @@ export default function App() {
       <Route element={<Protected role="trainer" />}>
         <Route path="/trainer" element={<Navigate to="/trainer/create" replace />} />
         <Route path="/trainer/create" element={<ExactAssessmentFormPage />} />
-        <Route path="/trainer/feedback" element={<TrainerFeedbackPage />} />
         <Route path="/trainer/submissions" element={<TrainerSubmissionsPage />} />
         <Route path="/trainer/submissions/view" element={<TrainerSubmissionViewPage />} />
       </Route>
@@ -59,7 +56,6 @@ export default function App() {
       <Route element={<Protected role="supervisor" />}>
         <Route path="/supervisor" element={<SupervisorDashboardPage />} />
         <Route path="/supervisor/review" element={<ReviewSignOffPage />} />
-        <Route path="/supervisor/archive" element={<SupervisorArchivePage />} />
         <Route path="/supervisor/reports" element={<SupervisorReportsPage />} />
       </Route>
 

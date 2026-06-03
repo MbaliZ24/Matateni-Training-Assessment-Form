@@ -2,6 +2,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { loginUser, registerUser, submitFeedback } from "../lib/api";
+import { normalizeStatus } from "../lib/form-status";
 import type { NotificationItem, Role, TrainingForm, User } from "../types";
 
 const users: User[] = [];
@@ -157,10 +158,13 @@ export const useAppStore = create<AppState>()(
       },
       logout: () => set({ currentUser: null }),
       setSelectedReviewFormId: (id) => set({ selectedReviewFormId: id }),
-      updateFormStatus: (id, status) => set({ forms: get().forms.map((f) => (f.id === id ? { ...f, status } : f)) }),
+      updateFormStatus: (id, status) =>
+        set({
+          forms: get().forms.map((f) => (f.id === id ? { ...f, status: normalizeStatus(status) } : f))
+        }),
       addForm: (form) =>
         set({
-          forms: [form, ...get().forms.filter((existingForm) => existingForm.id !== form.id)]
+          forms: [{ ...form, status: normalizeStatus(form.status) }, ...get().forms.filter((existingForm) => existingForm.id !== form.id)]
         }),
       removeForm: (id) =>
         set({
@@ -169,6 +173,7 @@ export const useAppStore = create<AppState>()(
       submitTraineeFeedback: async (payload) => {
         const target = get().forms.find((form) => form.id === payload.formId);
         if (!target) return false;
+        const now = new Date().toISOString();
 
         // Mirror the page-level duplicate guard so repeated trainee submissions cannot be stored by bypassing the UI.
         const normalize = (value: string) => value.trim().toLowerCase();
@@ -227,8 +232,9 @@ export const useAppStore = create<AppState>()(
               ...form,
               feedbackResponses: nextCount,
               averageScore: Number(nextAverage.toFixed(1)),
+              updatedAt: now,
               // Keep drafts as drafts until trainer explicitly submits the full form.
-              status: form.status === "Draft" ? "Draft" : form.status,
+              status: form.status === "DRAFT" ? "DRAFT" : form.status,
               supervisorOnlyFeedback: [
                 ...(form.supervisorOnlyFeedback ?? []),
                 {
@@ -243,7 +249,17 @@ export const useAppStore = create<AppState>()(
                 }
               ]
             };
-          })
+          }),
+          notifications: [
+            {
+              id: `n-${Date.now()}`,
+              title: "Feedback received",
+              body: `${target.title} received a new trainee feedback submission.`,
+              time: now,
+              read: false
+            },
+            ...get().notifications
+          ]
         });
         return true;
       },
@@ -267,7 +283,8 @@ export const useAppStore = create<AppState>()(
             form.id === payload.formId
               ? {
                   ...form,
-                  status: "Under Review",
+                  status: "TRAINERASSESSMENTPENDING",
+                  updatedAt: now,
                   supervisorReview: review,
                   supervisorReviewHistory: [...(form.supervisorReviewHistory ?? []), review]
                 }
@@ -292,13 +309,14 @@ export const useAppStore = create<AppState>()(
           submittedBy: payload.reviewerName,
           updatedAt: now
         };
-        const nextStatus = payload.decision === "Approve" ? "Approved" : "Needs Correction";
+        const nextStatus = payload.decision === "Approve" ? "COMPLETED" : "FOLLOWUPPENDING";
         set({
           forms: get().forms.map((form) =>
             form.id === payload.formId
               ? {
                   ...form,
                   status: nextStatus,
+                  updatedAt: now,
                   supervisorReview: review,
                   trainerFeedbackReadAt: undefined,
                   supervisorReviewHistory: [...(form.supervisorReviewHistory ?? []), review]
@@ -335,7 +353,12 @@ export const useAppStore = create<AppState>()(
         return {
           ...currentState,
           ...persisted,
-          forms: Array.isArray(persisted.forms) ? persisted.forms : currentState.forms,
+          forms: Array.isArray(persisted.forms)
+            ? persisted.forms.map((form) => ({
+                ...form,
+                status: normalizeStatus(form.status)
+              }))
+            : currentState.forms,
           users: sanitizePersistedUsers(persisted.users),
           currentUser: null
         };

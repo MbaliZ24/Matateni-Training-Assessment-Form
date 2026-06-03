@@ -13,7 +13,7 @@ function MetricBar({ label, value }: { label: string; value: number }) {
 
 export function ReportsAnalyticsPage() {
   const forms = useAppStore((s) => s.forms);
-  const approvalRate = Math.round((forms.filter((f) => f.status === "Approved").length / forms.length) * 100 || 0);
+  const approvalRate = Math.round((forms.filter((f) => f.status === "COMPLETED").length / forms.length) * 100 || 0);
 
   return (
     <div className="space-y-6">
