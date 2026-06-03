@@ -20,6 +20,13 @@ public class User
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Supervisor assigned to trainers for assessment sign-off.</summary>
+    public string? SupervisorId { get; set; }
+
+    public User? Supervisor { get; set; }
+
+    public ICollection<User> SupervisedTrainers { get; set; } = new List<User>();
+
     public ICollection<TrainingAssessment> Assessments { get; set; } = new List<TrainingAssessment>();
 
     public ICollection<FollowUp> FollowUps { get; set; } = new List<FollowUp>();

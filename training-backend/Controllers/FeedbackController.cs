@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using training_backend.Models.DTOs;
 using training_backend.Services.Interfaces;
@@ -15,6 +16,7 @@ public class FeedbackController : ControllerBase
         _service = service;
     }
 
+    [AllowAnonymous]
     [HttpPost]
     public async Task<IActionResult> Submit(CreateFeedbackSubmissionDto dto)
     {
@@ -34,6 +36,7 @@ public class FeedbackController : ControllerBase
         }
     }
 
+    [Authorize]
     [HttpGet("session/{sessionId}/summary")]
     public async Task<IActionResult> GetSummary(int sessionId)
     {

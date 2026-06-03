@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using training_backend.Data;
 using training_backend.Models.DTOs;
 using training_backend.Models.Entities;
+using training_backend.Models.Enums;
 using training_backend.Services.Interfaces;
 
 namespace training_backend.Services;
@@ -18,11 +19,25 @@ public class FeedbackService : IFeedbackService
     public async Task<int> SubmitFeedbackAsync(CreateFeedbackSubmissionDto dto)
     {
         // validate session exists
-        var sessionExists = await _context.TrainingSessions
-            .AnyAsync(x => x.Id == dto.TrainingSessionId);
+        var session = await _context.TrainingSessions
+            .Include(x => x.FeedbackSubmissions)
+            .FirstOrDefaultAsync(x => x.Id == dto.TrainingSessionId);
 
-        if (!sessionExists)
+        if (session is null)
             throw new Exception("Training session not found");
+
+        if (session.Status == AssessmentStatus.DRAFT)
+            throw new Exception("This assessment is still a draft and is not open for trainee feedback yet.");
+
+        if (
+            session.Status == AssessmentStatus.FEEDBACKCLOSED ||
+            (session.FeedbackClosesAt.HasValue && session.FeedbackClosesAt.Value <= DateTime.UtcNow)
+        )
+        {
+            session.Status = AssessmentStatus.FEEDBACKCLOSED;
+            await _context.SaveChangesAsync();
+            throw new Exception("Feedback is closed for this training session");
+        }
 
         // create submission
         var submission = new FeedbackSubmission
@@ -44,6 +59,12 @@ public class FeedbackService : IFeedbackService
         }
 
         _context.FeedbackSubmissions.Add(submission);
+
+        var nextSubmissionCount = session.FeedbackSubmissions.Count + 1;
+        if (session.NumberOfTrainees.HasValue && nextSubmissionCount >= session.NumberOfTrainees.Value)
+        {
+            session.Status = AssessmentStatus.FEEDBACKCLOSED;
+        }
 
         await _context.SaveChangesAsync();
 

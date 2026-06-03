@@ -1,8 +1,9 @@
 ﻿// Public trainee feedback form (no login) with the original matrix-style rating experience.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { useAppStore } from "../../store/app-store";
+import { getPublicTrainingSession } from "../../lib/api";
 import { useSearchParams } from "react-router-dom";
 
 const feedbackStatements = [
@@ -22,6 +23,34 @@ export function TraineeFeedbackPage() {
   const forms = useAppStore((s) => s.forms);
   const submitTraineeFeedback = useAppStore((s) => s.submitTraineeFeedback);
   const targetForm = forms.find((f) => f.id === formId);
+  const backendSessionId = Number(formId.replace(/^F-/, ""));
+  const hasValidBackendLink = Number.isFinite(backendSessionId) && backendSessionId > 0;
+  const [publicClosed, setPublicClosed] = useState(false);
+  const [publicTitle, setPublicTitle] = useState("");
+
+  useEffect(() => {
+    if (!hasValidBackendLink) return;
+    let cancelled = false;
+    getPublicTrainingSession(backendSessionId)
+      .then((session) => {
+        if (cancelled) return;
+        setPublicTitle(session.title);
+        setPublicClosed(!session.feedbackOpen || session.status.toLowerCase() === "draft");
+      })
+      .catch(() => {
+        if (!cancelled) setPublicClosed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [backendSessionId, hasValidBackendLink]);
+
+  const feedbackClosed =
+    (!targetForm && !hasValidBackendLink) ||
+    publicClosed ||
+    targetForm?.status === "Draft" ||
+    targetForm?.status === "Feedback Closed" ||
+    (targetForm?.feedbackClosesAt ? new Date(targetForm.feedbackClosesAt).getTime() <= Date.now() : false);
   const [traineeName, setTraineeName] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [departmentRole, setDepartmentRole] = useState("");
@@ -29,7 +58,17 @@ export function TraineeFeedbackPage() {
   const [ratings, setRatings] = useState<(number | null)[]>(Array(feedbackStatements.length).fill(null));
   const [comments, setComments] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showThanksModal, setShowThanksModal] = useState(false);
+
+  const clearFeedbackForm = () => {
+    setTraineeName("");
+    setEmployeeId("");
+    setDepartmentRole("");
+    setFeedbackDate("");
+    setRatings(Array(feedbackStatements.length).fill(null));
+    setComments("");
+  };
 
   const averageScore = useMemo(() => {
     const selected = ratings.filter((score): score is number => score !== null);
@@ -47,7 +86,10 @@ export function TraineeFeedbackPage() {
         <CardContent className="space-y-5">
           <div className="rounded-xl border border-brand-line bg-slate-50 p-4">
             <p className="mb-3 text-sm font-semibold text-brand-ink">Trainee Information</p>
-            <p className="mb-3 text-xs text-slate-500">Training Form ID: {formId || "Missing formId in link"}</p>
+            <p className="mb-3 text-xs text-slate-500">
+              Training Form ID: {formId || "Missing formId in link"}
+              {publicTitle ? ` · ${publicTitle}` : ""}
+            </p>
             <div className="grid gap-3 md:grid-cols-2">
               <input
                 type="text"
@@ -136,8 +178,9 @@ export function TraineeFeedbackPage() {
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
-              disabled={!targetForm}
+              disabled={feedbackClosed || isSubmitting}
               onClick={async () => {
+                setIsSubmitting(true);
                 const selected = ratings.filter((score): score is number => score !== null);
                 const averageValue =
                   selected.length === 0
@@ -146,34 +189,33 @@ export function TraineeFeedbackPage() {
                         (selected.reduce((sum, score) => sum + score, 0) / selected.length).toFixed(1)
                       );
 
-                const ok = await submitTraineeFeedback({
-                  formId,
-                  traineeName: traineeName.trim(),
-                  employeeId: employeeId.trim(),
-                  departmentRole: departmentRole.trim(),
-                  feedbackDate,
-                  averageScore: averageValue,
-                  comment: comments.trim(),
-                  statementRatings: ratings
-                });
-                setSubmitted(ok);
+                try {
+                  const ok = await submitTraineeFeedback({
+                    formId,
+                    traineeName: traineeName.trim(),
+                    employeeId: employeeId.trim(),
+                    departmentRole: departmentRole.trim(),
+                    feedbackDate,
+                    averageScore: averageValue,
+                    comment: comments.trim(),
+                    statementRatings: ratings
+                  });
+                  setSubmitted(ok);
 
-                if (ok) {
-                  // Clear all local form fields so trainee-entered info is not retained on screen.
-                  setTraineeName("");
-                  setEmployeeId("");
-                  setDepartmentRole("");
-                  setFeedbackDate("");
-                  setRatings(Array(feedbackStatements.length).fill(null));
-                  setComments("");
-                  setShowThanksModal(true);
+                  if (ok) {
+                    clearFeedbackForm();
+                    setShowThanksModal(true);
+                  }
+                } finally {
+                  setIsSubmitting(false);
                 }
               }}
               className="min-w-40"
             >
-              Submit Feedback
+              {isSubmitting ? "Submitting..." : "Submit Feedback"}
             </Button>
-            {!targetForm ? <p className="text-sm text-red-700">Invalid or missing training link. Ask your trainer for the correct feedback link.</p> : null}
+            {!targetForm && !hasValidBackendLink ? <p className="text-sm text-red-700">Invalid or missing training link. Ask your trainer for the correct feedback link.</p> : null}
+            {targetForm && feedbackClosed ? <p className="text-sm text-amber-700">This feedback link is closed.</p> : null}
             {submitted ? <p className="text-sm text-emerald-700">Thank you. Your feedback was submitted.</p> : null}
           </div>
         </CardContent>

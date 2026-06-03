@@ -12,6 +12,7 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-8">
@@ -36,16 +37,23 @@ export function LoginPage() {
             </div>
             <h2 className="text-center text-4xl font-bold text-[var(--brand-ink)]">Welcome back!</h2>
             <p className="mt-2 text-center text-lg text-slate-500">Sign in to your account to continue</p>
+            <p className="mt-2 text-center text-xs text-slate-400">
+              Demo: trainer@matateni.com / supervisor@matateni.com / admin@matateni.com — password: demo123
+            </p>
             <form
               className="mt-8 space-y-5"
               onSubmit={async (e) => {
                 e.preventDefault();
-                const ok = await login(email, password);
+                setIsSubmitting(true);
+                setError("");
+                const ok = await login(email.trim(), password);
+                setIsSubmitting(false);
                 if (!ok) {
-                  setError("Invalid credentials");
+                  setError(
+                    "Sign-in failed. Use demo123 with trainer@matateni.com, supervisor@matateni.com, or admin@matateni.com, and confirm the API is running on port 5000."
+                  );
                   return;
                 }
-                setError("");
                 const current = useAppStore.getState().currentUser;
                 if (current) navigate(dashboardRouteByRole(current.role));
               }}
@@ -63,7 +71,9 @@ export function LoginPage() {
                 <button type="button" className="font-medium text-[var(--brand-ink)] hover:text-[var(--brand-ruby)]">Forgot password?</button>
               </div>
               {error ? <p className="text-sm font-medium text-red-700">{error}</p> : null}
-              <Button className="w-full" size="lg">Sign In</Button>
+              <Button className="w-full" size="lg" disabled={isSubmitting}>
+                {isSubmitting ? "Signing in…" : "Sign In"}
+              </Button>
             </form>
           </motion.div>
         </section>

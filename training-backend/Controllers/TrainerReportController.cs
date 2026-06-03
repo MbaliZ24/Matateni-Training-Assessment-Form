@@ -1,10 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using training_backend.Models.DTOs;
 using training_backend.Services.Interfaces;
 
+namespace training_backend.Controllers;
 
-
-
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class TrainerReportController : ControllerBase
@@ -38,18 +39,16 @@ public class TrainerReportController : ControllerBase
     }
 
     [HttpPost("{id}/submit")]
-    public async Task<IActionResult> Submit(int id)
+    public async Task<IActionResult> Submit(int id, [FromBody] SubmitTrainerReportDto? dto)
     {
         try
         {
-            await _service.SubmitReportAsync(id);
+            await _service.SubmitReportAsync(id, dto?.FormSnapshot);
             return Ok("Submitted to supervisor");
         }
         catch (Exception ex)
-{
-    return BadRequest(ex.InnerException?.Message ?? ex.Message);
-}
-
-        
+        {
+            return BadRequest(ex.InnerException?.Message ?? ex.Message);
+        }
     }
 }

@@ -8,7 +8,11 @@ public class TrainingSession
 
     public string Title { get; set; } = string.Empty;
 
-    public int TrainerId { get; set; }
+    public string TrainerId { get; set; } = string.Empty;
+
+    public string? AssignedSupervisorId { get; set; }
+
+    public User? AssignedSupervisor { get; set; }
 
     public string? Department { get; set; }
 
@@ -26,7 +30,15 @@ public class TrainingSession
 
     public AssessmentStatus Status { get; set; } = AssessmentStatus.DRAFT;
 
+    public DateTime? FeedbackClosesAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Serialized trainer form state while status is DRAFT.</summary>
+    public string? DraftPayloadJson { get; set; }
+
+    /// <summary>Full form snapshot after trainer submits to supervisor.</summary>
+    public string? SubmittedPayloadJson { get; set; }
 
     public ICollection<TrainingObjective> Objectives { get; set; } = new List<TrainingObjective>();
 

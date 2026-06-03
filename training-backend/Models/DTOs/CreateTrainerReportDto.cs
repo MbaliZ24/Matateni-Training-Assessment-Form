@@ -32,4 +32,7 @@ public class CreateTrainerReportDto
     public string TrainerName { get; set; } = string.Empty;
 
     public string TrainerSignature { get; set; } = string.Empty;
+
+    /// <summary>Full assessment form JSON for supervisor review.</summary>
+    public string? FormSnapshot { get; set; }
 }

@@ -4,6 +4,7 @@ export type Role = "trainer" | "supervisor" | "admin";
 export type Status =
   | "Draft"
   | "Waiting for Feedback"
+  | "Feedback Closed"
   | "Submitted"
   | "Under Review"
   | "Approved"
@@ -25,6 +26,7 @@ export type TrainingForm = {
   id: string;
   title: string;
   trainerId: string;
+  backendSessionId?: number;
   assignedSupervisorId?: string;
   department: string;
   date: string;
@@ -34,6 +36,7 @@ export type TrainingForm = {
   status: Status;
   recommendation: string;
   createdAt: string;
+  feedbackClosesAt?: string;
   submittedAt?: string;
   submittedData?: {
     trainerName: string;
@@ -43,6 +46,8 @@ export type TrainingForm = {
     durationDays: string;
     durationHours: string;
     numberOfTrainees: string;
+    feedbackOpenHours?: string;
+    feedbackClosesAt?: string;
     objectives: string[];
     passRate: string;
     averageScoreDisplay: string;

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using training_backend.Models.DTOs;
 using training_backend.Services.Interfaces;
@@ -5,6 +6,7 @@ using QRCoder;
 
 namespace training_backend.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class TrainingSessionsController : ControllerBase
@@ -16,7 +18,6 @@ public class TrainingSessionsController : ControllerBase
         _service = service;
     }
 
-    // CREATE TRAINING SESSION
     [HttpPost]
     public async Task<IActionResult> Create(CreateTrainingSessionDto dto)
     {
@@ -36,7 +37,78 @@ public class TrainingSessionsController : ControllerBase
         }
     }
 
-    // GENERATE QR CODE
+    [HttpGet("trainer/{trainerId}")]
+    public async Task<IActionResult> GetTrainerSessions(string trainerId)
+    {
+        var sessions = await _service.GetTrainerSessionsAsync(trainerId);
+        return Ok(sessions);
+    }
+
+    [HttpGet("supervisor/{supervisorId}")]
+    public async Task<IActionResult> GetSupervisorSessions(string supervisorId)
+    {
+        var sessions = await _service.GetSupervisorSessionsAsync(supervisorId);
+        return Ok(sessions);
+    }
+
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> GetSession(int id)
+    {
+        try
+        {
+            var session = await _service.GetSessionAsync(id);
+            return Ok(session);
+        }
+        catch (Exception ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
+    [AllowAnonymous]
+    [HttpGet("{id:int}/public")]
+    public async Task<IActionResult> GetPublicSession(int id)
+    {
+        try
+        {
+            var session = await _service.GetPublicSessionAsync(id);
+            return Ok(session);
+        }
+        catch (Exception ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
+    [HttpPost("draft")]
+    public async Task<IActionResult> SaveDraft(SaveTrainingSessionDraftDto dto)
+    {
+        try
+        {
+            var id = await _service.SaveDraftAsync(dto);
+            return Ok(new { sessionId = id, message = "Draft saved" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost("{id:int}/publish")]
+    public async Task<IActionResult> Publish(int id, PublishTrainingSessionDto dto)
+    {
+        try
+        {
+            await _service.PublishSessionAsync(id, dto);
+            return Ok(new { sessionId = id, message = "Assessment published and open for trainee feedback" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [AllowAnonymous]
     [HttpGet("{id}/qr")]
     public IActionResult GenerateQrCode(int id)
     {

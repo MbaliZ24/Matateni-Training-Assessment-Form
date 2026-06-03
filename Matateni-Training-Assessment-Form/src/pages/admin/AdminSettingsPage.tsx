@@ -128,7 +128,7 @@ export function AdminSettingsPage() {
                     <td className="text-slate-700">
                       <select
                         value={user.role}
-                        onChange={(event) => updateUser(user.id, { role: event.target.value as Role })}
+                        onChange={(event) => void updateUser(user.id, { role: event.target.value as Role })}
                         className="h-8 rounded-md border border-slate-300 bg-white px-2 text-sm"
                       >
                         <option value="trainer">trainer</option>
@@ -139,7 +139,7 @@ export function AdminSettingsPage() {
                     <td className="text-slate-700">
                       <Input
                         value={user.department}
-                        onChange={(event) => updateUser(user.id, { department: event.target.value })}
+                        onChange={(event) => void updateUser(user.id, { department: event.target.value })}
                         className="h-8"
                       />
                     </td>
@@ -147,7 +147,7 @@ export function AdminSettingsPage() {
                       {user.role === "trainer" ? (
                         <select
                           value={user.supervisorId ?? ""}
-                          onChange={(event) => updateUser(user.id, { supervisorId: event.target.value || undefined })}
+                          onChange={(event) => void updateUser(user.id, { supervisorId: event.target.value || undefined })}
                           className="h-8 min-w-[220px] rounded-md border border-slate-300 bg-white px-2 text-sm"
                         >
                           <option value="">Not assigned</option>

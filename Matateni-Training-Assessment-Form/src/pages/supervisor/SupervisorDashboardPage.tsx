@@ -14,8 +14,10 @@ import {
 import { Card, CardContent } from "../../components/ui/card";
 import { StatusBadge } from "../../components/ui/status-badge";
 import { useAppStore } from "../../store/app-store";
+import { getSupervisorSessions } from "../../lib/api";
 import { exportSignedFormPdf } from "../../lib/export";
 import { isInStatuses, REVIEW_QUEUE_STATUSES } from "../../lib/form-status";
+import { mapBackendSessionToForm } from "../../lib/session-forms";
 
 type MenuState = { id: string; x: number; y: number } | null;
 
@@ -24,6 +26,7 @@ export function SupervisorDashboardPage() {
   const forms = useAppStore((s) => s.forms);
   const users = useAppStore((s) => s.users);
   const currentUser = useAppStore((s) => s.currentUser);
+  const addForm = useAppStore((s) => s.addForm);
   const setSelectedReviewFormId = useAppStore((s) => s.setSelectedReviewFormId);
 
   const [query, setQuery] = useState("");
@@ -53,6 +56,29 @@ export function SupervisorDashboardPage() {
     setIsMenuVisible(false);
     setTimeout(() => setOpenMenu(null), 120);
   };
+
+  useEffect(() => {
+    const supervisorId = currentUser?.id;
+    if (!supervisorId) return;
+
+    let cancelled = false;
+    getSupervisorSessions(supervisorId)
+      .then((sessions) => {
+        if (cancelled) return;
+        sessions.forEach((session) => {
+          addForm(
+            mapBackendSessionToForm(session, {
+              fallbackSupervisorId: supervisorId
+            })
+          );
+        });
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [addForm, currentUser?.id]);
 
   useEffect(() => {
     if (!openMenu) return;

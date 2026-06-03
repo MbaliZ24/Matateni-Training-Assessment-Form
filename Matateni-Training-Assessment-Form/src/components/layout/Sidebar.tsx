@@ -18,8 +18,9 @@ import type { Role } from "../../types";
 const navByRole: Record<Role, { to: string; label: string; icon: React.ComponentType<{ className?: string }> }[]> = {
   trainer: [
     { to: "/trainer/create", label: "Assessments", icon: ClipboardList },
+    { to: "/trainer/drafts", label: "My Drafts", icon: FileText },
     { to: "/trainer/feedback", label: "Feedback", icon: MessageSquare },
-    { to: "/trainer/submissions", label: "My Submissions", icon: FileText }
+    { to: "/trainer/submissions", label: "My Submissions", icon: ListChecks }
   ],
   supervisor: [
     { to: "/supervisor", label: "Dashboard", icon: ShieldCheck },

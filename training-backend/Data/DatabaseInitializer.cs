@@ -1,14 +1,22 @@
 using Microsoft.EntityFrameworkCore;
 using training_backend.Models.Entities;
+using training_backend.Models.Enums;
 using training_backend.Services;
 
 namespace training_backend.Data;
 
 public static class DatabaseInitializer
 {
+    private const string DefaultDepartmentId = "Operations";
     private const string AdminEmail = "admin@matateni.com";
     private const string AdminPassword = "demo123";
     private const string AdminFullName = "Matateni Admin";
+    private const string SupervisorEmail = "supervisor@matateni.com";
+    private const string SupervisorPassword = "demo123";
+    private const string SupervisorFullName = "Demo Supervisor";
+    private const string TrainerEmail = "trainer@matateni.com";
+    private const string TrainerPassword = "demo123";
+    private const string TrainerFullName = "Demo Trainer";
 
     public static async Task InitializeAsync(IServiceProvider services)
     {
@@ -17,35 +25,95 @@ public static class DatabaseInitializer
 
         await dbContext.Database.MigrateAsync();
 
-        var admin = await dbContext.Users
-            .FirstOrDefaultAsync(user => user.Email.ToLower() == AdminEmail.ToLower());
+        await EnsureDepartmentAsync(dbContext);
 
-        if (admin is null)
+        await EnsureUserAsync(
+            dbContext,
+            AdminEmail,
+            AdminFullName,
+            Role.ADMIN,
+            AdminPassword,
+            null);
+        await dbContext.SaveChangesAsync();
+
+        var supervisor = await EnsureUserAsync(
+            dbContext,
+            SupervisorEmail,
+            SupervisorFullName,
+            Role.SUPERVISOR,
+            SupervisorPassword,
+            null);
+        await dbContext.SaveChangesAsync();
+
+        await EnsureUserAsync(
+            dbContext,
+            TrainerEmail,
+            TrainerFullName,
+            Role.TRAINER,
+            TrainerPassword,
+            supervisor.Id);
+        await dbContext.SaveChangesAsync();
+    }
+
+    private static async Task EnsureDepartmentAsync(AppDbContext dbContext)
+    {
+        var exists = await dbContext.Set<Department>()
+            .AnyAsync(d => d.Id == DefaultDepartmentId);
+
+        if (exists)
         {
-            admin = new User
+            return;
+        }
+
+        dbContext.Set<Department>().Add(new Department
+        {
+            Id = DefaultDepartmentId,
+            Name = "Operations",
+            CreatedAt = DateTime.UtcNow
+        });
+
+        await dbContext.SaveChangesAsync();
+    }
+
+    private static async Task<User> EnsureUserAsync(
+        AppDbContext dbContext,
+        string email,
+        string fullName,
+        Role role,
+        string password,
+        string? supervisorId)
+    {
+        var normalizedEmail = email.ToLower();
+        var user = await dbContext.Users
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == normalizedEmail);
+
+        if (user is null)
+        {
+            user = new User
             {
-                FullName = AdminFullName,
-                Email = AdminEmail,
-                Role = Role.ADMIN,
-                DepartmentId = null,
+                FullName = fullName,
+                Email = normalizedEmail,
+                Role = role,
+                DepartmentId = DefaultDepartmentId,
+                SupervisorId = role == Role.TRAINER ? supervisorId : null,
                 CreatedAt = DateTime.UtcNow
             };
-
-            admin.Password = PasswordService.HashPassword(admin, AdminPassword);
-            dbContext.Users.Add(admin);
+            user.Password = PasswordService.HashPassword(user, password);
+            dbContext.Users.Add(user);
         }
         else
         {
-            admin.FullName = AdminFullName;
-            admin.Role = Role.ADMIN;
-            admin.DepartmentId = null;
+            user.FullName = fullName;
+            user.Role = role;
+            user.DepartmentId = user.DepartmentId ?? DefaultDepartmentId;
+            user.SupervisorId = role == Role.TRAINER ? supervisorId : null;
 
-            if (!PasswordService.VerifyPassword(admin, AdminPassword, out var needsRehash) || needsRehash)
+            if (!PasswordService.VerifyPassword(user, password, out var needsRehash) || needsRehash)
             {
-                admin.Password = PasswordService.HashPassword(admin, AdminPassword);
+                user.Password = PasswordService.HashPassword(user, password);
             }
         }
 
-        await dbContext.SaveChangesAsync();
+        return user;
     }
 }

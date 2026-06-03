@@ -25,29 +25,6 @@ namespace training_backend.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "TrainingSessions",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    Title = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    TrainerId = table.Column<int>(type: "int", nullable: false),
-                    Department = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    TrainingDate = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    DurationDays = table.Column<int>(type: "int", nullable: true),
-                    DurationHours = table.Column<int>(type: "int", nullable: true),
-                    NumberOfTrainees = table.Column<int>(type: "int", nullable: true),
-                    TrainingFormat = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    TargetAudience = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Status = table.Column<int>(type: "int", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_TrainingSessions", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "User",
                 columns: table => new
                 {
@@ -57,7 +34,8 @@ namespace training_backend.Migrations
                     Password = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Role = table.Column<int>(type: "int", nullable: false),
                     DepartmentId = table.Column<string>(type: "nvarchar(450)", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    SupervisorId = table.Column<string>(type: "nvarchar(450)", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -67,67 +45,11 @@ namespace training_backend.Migrations
                         column: x => x.DepartmentId,
                         principalTable: "Department",
                         principalColumn: "Id");
-                });
-
-            migrationBuilder.CreateTable(
-                name: "FeedbackSubmissions",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    TrainingSessionId = table.Column<int>(type: "int", nullable: false),
-                    TraineeName = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    SubmittedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_FeedbackSubmissions", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_FeedbackSubmissions_TrainingSessions_TrainingSessionId",
-                        column: x => x.TrainingSessionId,
-                        principalTable: "TrainingSessions",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "TrainerReports",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    TrainingSessionId = table.Column<int>(type: "int", nullable: false),
-                    OverallPassRate = table.Column<double>(type: "float", nullable: false),
-                    SkillApplicationLevel = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    PerformanceImproved = table.Column<bool>(type: "bit", nullable: false),
-                    SupportNeeded = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    Comments = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    WhatWorkedWell = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    Improvements = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    TrainerComment = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    SupervisorComment = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    EffectivenessRating = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    Recommendation = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    TrainerName = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    TrainerSignature = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    TrainerSignatureStatus = table.Column<int>(type: "int", nullable: false),
-                    TrainerDate = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    SupervisorName = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    SupervisorSignature = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    SupervisorSignatureStatus = table.Column<int>(type: "int", nullable: false),
-                    SupervisorDate = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    SubmittedToSupervisor = table.Column<bool>(type: "bit", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_TrainerReports", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_TrainerReports_TrainingSessions_TrainingSessionId",
-                        column: x => x.TrainingSessionId,
-                        principalTable: "TrainingSessions",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        name: "FK_User_User_SupervisorId",
+                        column: x => x.SupervisorId,
+                        principalTable: "User",
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateTable(
@@ -175,48 +97,35 @@ namespace training_backend.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "FeedbackAnswers",
+                name: "TrainingSessions",
                 columns: table => new
                 {
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    FeedbackSubmissionId = table.Column<int>(type: "int", nullable: false),
-                    Question = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    Answer = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    Rating = table.Column<int>(type: "int", nullable: true)
+                    Title = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    TrainerId = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    AssignedSupervisorId = table.Column<string>(type: "nvarchar(450)", nullable: true),
+                    Department = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    TrainingDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    DurationDays = table.Column<int>(type: "int", nullable: true),
+                    DurationHours = table.Column<int>(type: "int", nullable: true),
+                    NumberOfTrainees = table.Column<int>(type: "int", nullable: true),
+                    TrainingFormat = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    TargetAudience = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    FeedbackClosesAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    DraftPayloadJson = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    SubmittedPayloadJson = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_FeedbackAnswers", x => x.Id);
+                    table.PrimaryKey("PK_TrainingSessions", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_FeedbackAnswers_FeedbackSubmissions_FeedbackSubmissionId",
-                        column: x => x.FeedbackSubmissionId,
-                        principalTable: "FeedbackSubmissions",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "TraineeAssessments",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    TrainerReportId = table.Column<int>(type: "int", nullable: false),
-                    TraineeName = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    DemonstratedUnderstanding = table.Column<bool>(type: "bit", nullable: false),
-                    CanPerformIndependently = table.Column<bool>(type: "bit", nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_TraineeAssessments", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_TraineeAssessments_TrainerReports_TrainerReportId",
-                        column: x => x.TrainerReportId,
-                        principalTable: "TrainerReports",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        name: "FK_TrainingSessions_User_AssignedSupervisorId",
+                        column: x => x.AssignedSupervisorId,
+                        principalTable: "User",
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateTable(
@@ -300,6 +209,67 @@ namespace training_backend.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "FeedbackSubmissions",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    TrainingSessionId = table.Column<int>(type: "int", nullable: false),
+                    TraineeName = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    SubmittedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_FeedbackSubmissions", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_FeedbackSubmissions_TrainingSessions_TrainingSessionId",
+                        column: x => x.TrainingSessionId,
+                        principalTable: "TrainingSessions",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TrainerReports",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    TrainingSessionId = table.Column<int>(type: "int", nullable: false),
+                    OverallPassRate = table.Column<double>(type: "float", nullable: false),
+                    SkillApplicationLevel = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    PerformanceImproved = table.Column<bool>(type: "bit", nullable: false),
+                    SupportNeeded = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Comments = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    WhatWorkedWell = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Improvements = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    TrainerComment = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    SupervisorComment = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    EffectivenessRating = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Recommendation = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    TrainerName = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    TrainerSignature = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    TrainerSignatureStatus = table.Column<int>(type: "int", nullable: false),
+                    TrainerDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    SupervisorName = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    SupervisorSignature = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    SupervisorSignatureStatus = table.Column<int>(type: "int", nullable: false),
+                    SupervisorDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    SubmittedToSupervisor = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TrainerReports", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TrainerReports_TrainingSessions_TrainingSessionId",
+                        column: x => x.TrainingSessionId,
+                        principalTable: "TrainingSessions",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "TrainingObjectives",
                 columns: table => new
                 {
@@ -350,6 +320,51 @@ namespace training_backend.Migrations
                         column: x => x.AssessmentId,
                         principalTable: "TrainingAssessment",
                         principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "FeedbackAnswers",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    FeedbackSubmissionId = table.Column<int>(type: "int", nullable: false),
+                    Question = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Answer = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Rating = table.Column<int>(type: "int", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_FeedbackAnswers", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_FeedbackAnswers_FeedbackSubmissions_FeedbackSubmissionId",
+                        column: x => x.FeedbackSubmissionId,
+                        principalTable: "FeedbackSubmissions",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TraineeAssessments",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    TrainerReportId = table.Column<int>(type: "int", nullable: false),
+                    TraineeName = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    DemonstratedUnderstanding = table.Column<bool>(type: "bit", nullable: false),
+                    CanPerformIndependently = table.Column<bool>(type: "bit", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TraineeAssessments", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TraineeAssessments_TrainerReports_TrainerReportId",
+                        column: x => x.TrainerReportId,
+                        principalTable: "TrainerReports",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateIndex(
@@ -419,9 +434,19 @@ namespace training_backend.Migrations
                 column: "TrainingSessionId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_TrainingSessions_AssignedSupervisorId",
+                table: "TrainingSessions",
+                column: "AssignedSupervisorId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_User_DepartmentId",
                 table: "User",
                 column: "DepartmentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_User_SupervisorId",
+                table: "User",
+                column: "SupervisorId");
         }
 
         /// <inheritdoc />

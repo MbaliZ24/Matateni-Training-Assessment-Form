@@ -1,6 +1,14 @@
 ﻿// Primary training assessment workflow used by trainer and reused as read-only for supervisor review.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { createTrainingSession, getTrainingSessionQrUrl, saveTrainerReport, submitTrainerReport } from "../../lib/api";
+import { useSearchParams } from "react-router-dom";
+import {
+  getTrainingSession,
+  getTrainingSessionQrUrl,
+  publishTrainingSession,
+  saveTrainerReport,
+  saveTrainingSessionDraft,
+  submitTrainerReport
+} from "../../lib/api";
 import { useAppStore } from "../../store/app-store";
 import type { TrainingForm } from "../../types";
 
@@ -459,6 +467,7 @@ type TrainerDraft = {
   trainingDurationDays: string;
   trainingDurationHours: string;
   numberOfTrainees: string;
+  feedbackOpenHours: string;
   objectives: string[];
   observedImprovement: YesNo;
   trainingFormats: string[];
@@ -492,6 +501,8 @@ type TrainerDraft = {
 };
 
 export function ExactAssessmentFormPage({ readOnly = false, submittedData, reviewFormId }: ExactAssessmentFormPageProps) {
+  const [searchParams] = useSearchParams();
+  const urlFormId = searchParams.get("formId");
   const addForm = useAppStore((s) => s.addForm);
   const submitSupervisorReview = useAppStore((s) => s.submitSupervisorReview);
   const forms = useAppStore((s) => s.forms);
@@ -511,6 +522,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   const [trainingDurationDays, setTrainingDurationDays] = useState(submittedData?.durationDays ?? "");
   const [trainingDurationHours, setTrainingDurationHours] = useState(submittedData?.durationHours ?? "");
   const [numberOfTrainees, setNumberOfTrainees] = useState(submittedData?.numberOfTrainees ?? "");
+  const [feedbackOpenHours, setFeedbackOpenHours] = useState(submittedData?.feedbackOpenHours ?? "24");
   const [objectives, setObjectives] = useState<string[]>(submittedData?.objectives?.length ? submittedData.objectives : [""]);
   const [observedImprovement, setObservedImprovement] = useState<YesNo>(submittedData?.observedImprovement ?? "");
   const [trainingFormats, setTrainingFormats] = useState<string[]>(submittedData?.trainingFormats ?? []);
@@ -564,6 +576,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   const [draftRestored, setDraftRestored] = useState(false);
   const [showDraftToast, setShowDraftToast] = useState(false);
   const [rehydratedFromLinkedForm, setRehydratedFromLinkedForm] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [lastAutoSavedAt, setLastAutoSavedAt] = useState<string | null>(null);
+  const [loadedRemoteDraft, setLoadedRemoteDraft] = useState(false);
 
   const autoAverageScore = useMemo(() => {
     const selected = ratings.filter((score): score is number => score !== null);
@@ -703,6 +718,10 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     [forms, effectiveDistributedFormId]
   );
 
+  const isDraftForm = linkedForm?.status === "Draft";
+  const isPublishedForFeedback =
+    linkedForm?.status === "Waiting for Feedback" || linkedForm?.status === "Feedback Closed";
+
   const statementAveragesFromFeedback = useMemo(() => {
     const feedback = linkedForm?.supervisorOnlyFeedback ?? [];
     if (feedback.length === 0) return [] as number[];
@@ -796,6 +815,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       setTrainingDurationDays(parsed.trainingDurationDays ?? "");
       setTrainingDurationHours(parsed.trainingDurationHours ?? "");
       setNumberOfTrainees(parsed.numberOfTrainees ?? "");
+      setFeedbackOpenHours(parsed.feedbackOpenHours ?? "24");
       setObjectives(parsed.objectives?.length ? parsed.objectives : [""]);
       setObservedImprovement(parsed.observedImprovement ?? "");
       setTrainingFormats(parsed.trainingFormats ?? []);
@@ -892,6 +912,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     setTrainingDurationDays(saved.durationDays ?? "");
     setTrainingDurationHours(saved.durationHours ?? "");
     setNumberOfTrainees(saved.numberOfTrainees ?? "");
+    setFeedbackOpenHours(saved.feedbackOpenHours ?? "24");
     setObjectives(saved.objectives?.length ? saved.objectives : [""]);
     setObservedImprovement(saved.observedImprovement ?? "");
     setTrainingFormats(saved.trainingFormats ?? []);
@@ -939,6 +960,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       trainingDurationDays,
       trainingDurationHours,
       numberOfTrainees,
+      feedbackOpenHours,
       objectives,
       observedImprovement,
       trainingFormats,
@@ -968,6 +990,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       trainingDurationDays.trim().length > 0 ||
       trainingDurationHours.trim().length > 0 ||
       numberOfTrainees.trim().length > 0 ||
+      feedbackOpenHours.trim().length > 0 ||
       objectives.some((objective) => objective.trim().length > 0) ||
       observedImprovement !== "" ||
       trainingFormats.length > 0 ||
@@ -1013,6 +1036,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     trainingDurationDays,
     trainingDurationHours,
     numberOfTrainees,
+    feedbackOpenHours,
     objectives,
     observedImprovement,
     trainingFormats,
@@ -1158,7 +1182,311 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     return hasFieldValue || signatures.trainer || signatures.supervisor;
   };
 
-  const handleDistributeTraineeQr = () => {
+  const buildTrainerDraft = (): TrainerDraft => ({
+    activeSection,
+    distributedFormId,
+    trainerName,
+    trainerDepartment,
+    trainingTitle,
+    trainingDate,
+    trainingDurationDays,
+    trainingDurationHours,
+    numberOfTrainees,
+    feedbackOpenHours,
+    objectives,
+    observedImprovement,
+    trainingFormats,
+    targetUserGroup,
+    followUpSupervisorName,
+    applicationExtent,
+    observedImprovementDetails,
+    supportNeeded,
+    barriersComment,
+    workedWellComment,
+    effectivenessRating,
+    recommendationChoice,
+    trainerFutureSessionComment,
+    supervisorFutureSessionComment,
+    signatures,
+    signOff,
+    ratings,
+    traineeRoster,
+    trainees,
+    commentsVersion: 0
+  });
+
+  const buildSubmittedDataSnapshot = (): NonNullable<TrainingForm["submittedData"]> => ({
+    trainerName,
+    trainerDepartment,
+    trainingTitle,
+    trainingDate,
+    durationDays: trainingDurationDays,
+    durationHours: trainingDurationHours,
+    numberOfTrainees,
+    feedbackOpenHours,
+    objectives,
+    passRate: autoPassRate || "-",
+    averageScoreDisplay: autoAverageScore || "-",
+    observedImprovement,
+    trainingFormats,
+    targetUserGroup,
+    followUpSupervisorName,
+    applicationExtent,
+    observedImprovementDetails,
+    supportNeeded,
+    barriersComment,
+    workedWellComment,
+    effectivenessRating,
+    recommendationChoice,
+    trainerFutureSessionComment,
+    supervisorFutureSessionComment,
+    trainees,
+    signatures,
+    signOff,
+    traineeRoster
+  });
+
+  const applyTrainerDraft = (parsed: TrainerDraft) => {
+    setDistributedFormId(parsed.distributedFormId ?? null);
+    setTrainerName(parsed.trainerName ?? "");
+    setTrainerDepartment(parsed.trainerDepartment ?? "");
+    setTrainingTitle(parsed.trainingTitle ?? "");
+    setTrainingDate(parsed.trainingDate ?? "");
+    setTrainingDurationDays(parsed.trainingDurationDays ?? "");
+    setTrainingDurationHours(parsed.trainingDurationHours ?? "");
+    setNumberOfTrainees(parsed.numberOfTrainees ?? "");
+    setFeedbackOpenHours(parsed.feedbackOpenHours ?? "24");
+    setObjectives(parsed.objectives?.length ? parsed.objectives : [""]);
+    setObservedImprovement(parsed.observedImprovement ?? "");
+    setTrainingFormats(parsed.trainingFormats ?? []);
+    setTargetUserGroup(parsed.targetUserGroup ?? "");
+    setFollowUpSupervisorName(parsed.followUpSupervisorName ?? "");
+    setApplicationExtent(parsed.applicationExtent ?? "");
+    setObservedImprovementDetails(parsed.observedImprovementDetails ?? "");
+    setSupportNeeded(parsed.supportNeeded ?? "");
+    setBarriersComment(parsed.barriersComment ?? "");
+    setWorkedWellComment(parsed.workedWellComment ?? "");
+    setEffectivenessRating(parsed.effectivenessRating ?? "");
+    setRecommendationChoice(parsed.recommendationChoice ?? "");
+    setTrainerFutureSessionComment(parsed.trainerFutureSessionComment ?? "");
+    setSupervisorFutureSessionComment(parsed.supervisorFutureSessionComment ?? "");
+    const sig = parsed.signatures;
+    setSignatures({
+      trainer: sig?.trainer ?? false,
+      supervisor: sig?.supervisor ?? false,
+      trainerImage: sig?.trainerImage ?? "",
+      supervisorImage: sig?.supervisorImage ?? ""
+    });
+    setSignOff(
+      parsed.signOff ?? {
+        trainerName: currentUser?.name ?? "",
+        trainerDate: "",
+        supervisorName: "",
+        supervisorDate: ""
+      }
+    );
+    setRatings(parsed.ratings ?? Array(feedbackStatements.length).fill(null));
+    setTraineeRoster(parsed.traineeRoster?.length ? parsed.traineeRoster : [createEmptyRosterItem()]);
+    setTrainees(parsed.trainees?.length ? parsed.trainees : [createEmptyTrainee()]);
+    if (sections.includes(parsed.activeSection)) {
+      setActiveSection(parsed.activeSection);
+    }
+  };
+
+  useEffect(() => {
+    if (readOnly || userRole !== "trainer" || loadedRemoteDraft) return;
+    const targetId = urlFormId ?? reviewFormId;
+    if (!targetId) return;
+
+    const sessionId = Number(targetId.replace(/^F-/, ""));
+    if (!Number.isFinite(sessionId) || sessionId <= 0) return;
+
+    let cancelled = false;
+
+    getTrainingSession(sessionId)
+      .then((session) => {
+        if (cancelled) return;
+        const formId = `F-${session.id}`;
+        setDistributedFormId(formId);
+
+        const payload = session.draftPayload ?? (session as { DraftPayload?: string }).DraftPayload;
+        if (payload) {
+          try {
+            applyTrainerDraft(JSON.parse(payload) as TrainerDraft);
+          } catch {
+            /* fall through to session fields */
+          }
+        }
+
+        if (!payload) {
+          setTrainingTitle(session.title ?? "");
+          setTrainerDepartment(session.department ?? "");
+          if (session.trainingDate) setTrainingDate(session.trainingDate.slice(0, 10));
+          if (session.durationDays != null) setTrainingDurationDays(String(session.durationDays));
+          if (session.durationHours != null) setTrainingDurationHours(String(session.durationHours));
+          if (session.numberOfTrainees != null) setNumberOfTrainees(String(session.numberOfTrainees));
+          const formats = session.trainingFormat ?? (session as { TrainingFormat?: string[] }).TrainingFormat;
+          if (formats?.length) setTrainingFormats(formats);
+          const audience = session.targetAudience ?? (session as { TargetAudience?: string }).TargetAudience;
+          if (audience) setTargetUserGroup(audience);
+          const objs = session.objectives ?? (session as { Objectives?: string[] }).Objectives;
+          if (objs?.length) setObjectives(objs);
+        }
+
+        const statusRaw = session.status ?? (session as { Status?: string }).Status ?? "Draft";
+        const uiStatus =
+          statusRaw.toLowerCase() === "waiting for feedback"
+            ? "Waiting for Feedback"
+            : statusRaw.toLowerCase() === "draft"
+              ? "Draft"
+              : "Draft";
+
+        addForm({
+          id: formId,
+          title: session.title || "Untitled draft",
+          trainerId: session.trainerId,
+          backendSessionId: session.id,
+          assignedSupervisorId: currentUser?.supervisorId,
+          department: session.department || currentUser?.department || "",
+          date: session.trainingDate?.slice(0, 10) || session.createdAt.slice(0, 10),
+          trainees: session.numberOfTrainees ?? 0,
+          feedbackResponses: 0,
+          averageScore: 0,
+          status: uiStatus as TrainingForm["status"],
+          recommendation:
+            uiStatus === "Draft" ? "Draft — not yet published" : "Open for trainee feedback",
+          createdAt: session.createdAt.slice(0, 10),
+          feedbackClosesAt: session.feedbackClosesAt ?? undefined
+        });
+
+        setLoadedRemoteDraft(true);
+        setRehydratedFromLinkedForm(true);
+        setDraftRestored(true);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    addForm,
+    currentUser?.department,
+    currentUser?.id,
+    currentUser?.name,
+    currentUser?.supervisorId,
+    loadedRemoteDraft,
+    readOnly,
+    reviewFormId,
+    urlFormId,
+    userRole
+  ]);
+
+  const saveDraftToServer = async (silent: boolean): Promise<boolean> => {
+    if (readOnly || userRole !== "trainer" || !currentUser?.id) return false;
+    if (!hasAnyFormInput()) return false;
+    if (isPublishedForFeedback && !isDraftForm) return false;
+
+    const existingSessionId = distributedFormId ? Number(distributedFormId.replace(/^F-/, "")) : NaN;
+    setIsSavingDraft(true);
+
+    try {
+      const result = await saveTrainingSessionDraft({
+        SessionId: Number.isFinite(existingSessionId) && existingSessionId > 0 ? existingSessionId : null,
+        TrainerId: currentUser.id,
+        Title: trainingTitle || "Untitled draft",
+        Department: trainerDepartment,
+        TrainingDate: trainingDate || undefined,
+        DurationDays: Number(trainingDurationDays) || undefined,
+        DurationHours: Number(trainingDurationHours) || undefined,
+        NumberOfTrainees: Number(numberOfTrainees) || undefined,
+        TrainingFormat: trainingFormats,
+        TargetAudience: targetUserGroup,
+        Objectives: objectives.filter((item) => item.trim().length > 0),
+        DraftPayload: JSON.stringify(buildTrainerDraft())
+      });
+
+      const formId = `F-${result.sessionId}`;
+      setDistributedFormId(formId);
+      setLastAutoSavedAt(new Date().toLocaleTimeString());
+
+      addForm({
+        id: formId,
+        title: trainingTitle || "Untitled draft",
+        trainerId: currentUser.id,
+        backendSessionId: result.sessionId,
+        assignedSupervisorId: currentUser.supervisorId,
+        department: trainerDepartment || currentUser.department || "",
+        date: trainingDate || new Date().toISOString().slice(0, 10),
+        trainees: Number(numberOfTrainees) || traineeRoster.length || 0,
+        feedbackResponses: 0,
+        averageScore: 0,
+        status: "Draft",
+        recommendation: "Draft — not yet published",
+        createdAt: new Date().toISOString().slice(0, 10),
+        submittedData: buildSubmittedDataSnapshot()
+      });
+
+      if (!silent) {
+        setSubmitModal({
+          open: true,
+          kind: "success",
+          title: "Draft Saved",
+          message: `Draft saved (${formId}). You can continue editing or publish when ready from My Drafts.`
+        });
+      }
+      return true;
+    } catch {
+      if (!silent) {
+        setSubmitModal({
+          open: true,
+          kind: "error",
+          title: "Save Failed",
+          message: "Could not save draft to the server. Check your connection and try again."
+        });
+      }
+      return false;
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!currentUser?.id) {
+      setSubmitModal({
+        open: true,
+        kind: "error",
+        title: "Login Required",
+        message: "Please sign in again before saving a draft."
+      });
+      return;
+    }
+
+    if (!hasAnyFormInput()) {
+      setSubmitModal({
+        open: true,
+        kind: "error",
+        title: "Nothing To Save",
+        message: "Add at least one field before saving a draft."
+      });
+      return;
+    }
+
+    await saveDraftToServer(false);
+  };
+
+  useEffect(() => {
+    if (readOnly || userRole !== "trainer") return;
+    if (isPublishedForFeedback && !isDraftForm) return;
+
+    const timer = window.setInterval(() => {
+      if (isSavingDraft) return;
+      void saveDraftToServer(true);
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, [readOnly, userRole, isDraftForm, isPublishedForFeedback, isSavingDraft, currentUser?.id]);
+
+  const handleDistributeTraineeQr = async () => {
     if (readOnly || userRole !== "trainer") return;
 
     if (!isSectionABComplete) {
@@ -1172,59 +1500,107 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       return;
     }
 
-    const formId = distributedFormId ?? `F-${Date.now()}`;
-    if (!distributedFormId) {
-      addForm({
-        id: formId,
-        title: trainingTitle || "Training Assessment",
-        trainerId: currentUser?.id ?? "u1",
-        assignedSupervisorId: currentUser?.supervisorId,
-        department: trainerDepartment || currentUser?.department || "Operations",
-        date: trainingDate || new Date().toISOString().slice(0, 10),
-        trainees: Number(numberOfTrainees) || traineeRoster.length || 0,
-        feedbackResponses: 0,
-        averageScore: 0,
-        status: "Draft",
-        recommendation: "Draft in progress",
-        createdAt: new Date().toISOString().slice(0, 10),
-        submittedData: {
-          trainerName,
-          trainerDepartment,
-          trainingTitle,
-          trainingDate,
-          durationDays: trainingDurationDays,
-          durationHours: trainingDurationHours,
-          numberOfTrainees,
-          objectives,
-          passRate: autoPassRate || "-",
-          averageScoreDisplay: autoAverageScore || "-",
-          observedImprovement,
-          trainingFormats,
-          targetUserGroup,
-          followUpSupervisorName,
-          applicationExtent,
-          observedImprovementDetails,
-          supportNeeded,
-          barriersComment,
-          workedWellComment,
-          effectivenessRating,
-          recommendationChoice,
-          trainerFutureSessionComment,
-          supervisorFutureSessionComment,
-          trainees,
-          signatures,
-          signOff,
-          traineeRoster
-        }
+    const openHours = Number(feedbackOpenHours);
+    if (!Number.isFinite(openHours) || openHours <= 0) {
+      setSubmitModal({
+        open: true,
+        kind: "error",
+        title: "Set Feedback Time",
+        message: "Please set how many hours the assessment should stay open for trainee feedback."
       });
-      setDistributedFormId(formId);
+      return;
     }
+
+    if (!currentUser?.id) {
+      setSubmitModal({
+        open: true,
+        kind: "error",
+        title: "Login Required",
+        message: "Please sign in again before publishing."
+      });
+      return;
+    }
+
+    let formId = distributedFormId ?? "";
+    let sessionId = formId ? Number(formId.replace(/^F-/, "")) : NaN;
+
+    try {
+      if (!Number.isFinite(sessionId) || sessionId <= 0) {
+        const saved = await saveTrainingSessionDraft({
+          TrainerId: currentUser.id,
+          Title: trainingTitle || "Training Assessment",
+          Department: trainerDepartment,
+          TrainingDate: trainingDate || undefined,
+          DurationDays: Number(trainingDurationDays) || undefined,
+          DurationHours: Number(trainingDurationHours) || undefined,
+          NumberOfTrainees: Number(numberOfTrainees) || undefined,
+          TrainingFormat: trainingFormats,
+          TargetAudience: targetUserGroup,
+          Objectives: objectives.filter((item) => item.trim().length > 0),
+          DraftPayload: JSON.stringify(buildTrainerDraft())
+        });
+        sessionId = saved.sessionId;
+        formId = `F-${sessionId}`;
+        setDistributedFormId(formId);
+      } else {
+        await saveTrainingSessionDraft({
+          SessionId: sessionId,
+          TrainerId: currentUser.id,
+          Title: trainingTitle || "Training Assessment",
+          Department: trainerDepartment,
+          TrainingDate: trainingDate || undefined,
+          DurationDays: Number(trainingDurationDays) || undefined,
+          DurationHours: Number(trainingDurationHours) || undefined,
+          NumberOfTrainees: Number(numberOfTrainees) || undefined,
+          TrainingFormat: trainingFormats,
+          TargetAudience: targetUserGroup,
+          Objectives: objectives.filter((item) => item.trim().length > 0),
+          DraftPayload: JSON.stringify(buildTrainerDraft())
+        });
+      }
+
+      await publishTrainingSession(sessionId, {
+        TrainerId: currentUser.id,
+        FeedbackOpenHours: openHours
+      });
+    } catch {
+      setSubmitModal({
+        open: true,
+        kind: "error",
+        title: "Publish Failed",
+        message: "Could not publish this assessment. Save a draft first, complete Section A and objectives, then try again."
+      });
+      return;
+    }
+
+    const feedbackClosesAt = new Date(Date.now() + openHours * 60 * 60 * 1000).toISOString();
+
+    addForm({
+      id: formId,
+      title: trainingTitle || "Training Assessment",
+      trainerId: currentUser.id,
+      backendSessionId: sessionId,
+      assignedSupervisorId: currentUser?.supervisorId,
+      department: trainerDepartment || currentUser?.department || "",
+      date: trainingDate || new Date().toISOString().slice(0, 10),
+      trainees: Number(numberOfTrainees) || traineeRoster.length || 0,
+      feedbackResponses: 0,
+      averageScore: 0,
+      status: "Waiting for Feedback",
+      recommendation: "Open for trainee feedback",
+      createdAt: new Date().toISOString().slice(0, 10),
+      feedbackClosesAt,
+      submittedData: {
+        ...buildSubmittedDataSnapshot(),
+        feedbackClosesAt
+      }
+    });
 
     setSubmitModal({
       open: true,
       kind: "success",
-      title: "Trainee QR Ready",
-      message: `Distribute this link to trainees: /trainee-feedback?formId=${formId}`
+      title: "Published — Open For Feedback",
+      message: `Trainees can submit feedback at /trainee-feedback?formId=${formId}. Feedback closes ${new Date(feedbackClosesAt).toLocaleString()}.`
     });
   };
 
@@ -1252,24 +1628,30 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         return;
       }
 
+      if (isDraftForm) {
+        setSubmitModal({
+          open: true,
+          kind: "error",
+          title: "Publish First",
+          message: "Publish this assessment and collect trainee feedback before submitting to your supervisor."
+        });
+        return;
+      }
+
       let trainingSessionId: number | null = null;
       let trainerReportId: number | null = null;
+      const formSnapshot = JSON.stringify(buildTrainerDraft());
+
       try {
-        const result = await createTrainingSession({
-          TrainerId: Number(currentUser?.id.replace(/^u/, "")) || 1,
-          Title: trainingTitle || "Training Assessment",
-          Department: trainerDepartment,
-          TrainingDate: trainingDate || undefined,
-          DurationDays: Number(trainingDurationDays) || undefined,
-          DurationHours: Number(trainingDurationHours) || undefined,
-          NumberOfTrainees: Number(numberOfTrainees) || undefined,
-          TrainingFormat: trainingFormats,
-          TargetAudience: targetUserGroup,
-          Objectives: objectives.filter((item) => item.trim().length > 0)
-        });
-        trainingSessionId = result.sessionId;
+        const existingSessionId = distributedFormId ? Number(distributedFormId.replace(/^F-/, "")) : NaN;
+        if (!Number.isFinite(existingSessionId) || existingSessionId <= 0) {
+          throw new Error("Missing session");
+        }
+        trainingSessionId = existingSessionId;
+
         const report = await saveTrainerReport({
           TrainingSessionId: trainingSessionId,
+          FormSnapshot: formSnapshot,
           TraineeAssessments: trainees.map((trainee) => ({
             TraineeName: trainee.name || "Unnamed trainee",
             DemonstratedUnderstanding: trainee.understanding === "Yes",
@@ -1293,7 +1675,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           TrainerSignature: signatures.trainerImage || (signatures.trainer ? "Signed" : "")
         });
         trainerReportId = report.id;
-        await submitTrainerReport(trainerReportId);
+        await submitTrainerReport(trainerReportId, formSnapshot);
       } catch (error) {
         setSubmitModal({
           open: true,
@@ -1306,6 +1688,11 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
 
       const newFormId = distributedFormId ?? (trainingSessionId ? `F-${trainingSessionId}` : `F-${Date.now()}`);
       const existingForm = forms.find((form) => form.id === newFormId);
+      const feedbackClosesAt =
+        existingForm?.feedbackClosesAt ??
+        (Number(feedbackOpenHours) > 0
+          ? new Date(Date.now() + Number(feedbackOpenHours) * 60 * 60 * 1000).toISOString()
+          : undefined);
       const computedAverageScore = Number(
         (
           ratings.filter((score): score is number => score !== null).reduce((sum, score) => sum + score, 0) /
@@ -1319,9 +1706,10 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       addForm({
         id: newFormId,
         title: trainingTitle || "Training Assessment",
-        trainerId: currentUser?.id ?? "u1",
+        trainerId: currentUser.id,
+        backendSessionId: existingForm?.backendSessionId ?? trainingSessionId ?? undefined,
         assignedSupervisorId: existingForm?.assignedSupervisorId ?? currentUser.supervisorId,
-        department: trainerDepartment || currentUser?.department || "Operations",
+        department: trainerDepartment || currentUser?.department || "",
         date: trainingDate || new Date().toISOString().slice(0, 10),
         trainees: Number(numberOfTrainees) || traineeRoster.length || 0,
         feedbackResponses: existingForm?.feedbackResponses ?? 0,
@@ -1333,6 +1721,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         status: "Submitted",
         recommendation: "Pending supervisor review",
         createdAt: existingForm?.createdAt ?? new Date().toISOString().slice(0, 10),
+        feedbackClosesAt,
         submittedAt: new Date().toISOString().slice(0, 10),
         submittedData: {
           trainerName,
@@ -1342,6 +1731,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           durationDays: trainingDurationDays,
           durationHours: trainingDurationHours,
           numberOfTrainees,
+          feedbackOpenHours,
+          feedbackClosesAt,
           objectives,
           passRate: autoPassRate || "-",
           averageScoreDisplay: autoAverageScore || "-",
@@ -1386,6 +1777,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       setTrainingDurationDays("");
       setTrainingDurationHours("");
       setNumberOfTrainees("");
+      setFeedbackOpenHours("24");
       setObjectives([""]);
       setObservedImprovement("");
       setTrainingFormats([]);
@@ -1576,7 +1968,16 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
           <div className="h-1.5 bg-brand-ruby" />
           <div className="p-5 md:p-7">
             {!isSupervisorReviewMode ? (
-              <div className="absolute right-5 top-5">
+              <div className="absolute right-5 top-5 flex flex-col items-end gap-2">
+                {isDraftForm ? (
+                  <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700">
+                    Draft — not published
+                  </span>
+                ) : isPublishedForFeedback ? (
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-800">
+                    Published — feedback open
+                  </span>
+                ) : null}
                 <span
                   className={`rounded-full border px-3 py-1 text-[11px] font-medium ${
                     assignedSupervisor
@@ -1608,6 +2009,11 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
               </div>
             </div>
 
+            {!isSupervisorReviewMode && lastAutoSavedAt ? (
+              <p className="mt-3 text-center text-xs text-slate-500">
+                {isSavingDraft ? "Auto-saving draft…" : `Last saved ${lastAutoSavedAt}`}
+              </p>
+            ) : null}
             {!isSupervisorReviewMode && showDraftToast ? (
               <div className="absolute right-5 top-14 max-w-xs rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
@@ -1656,68 +2062,6 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
             </div>
           </div>
         ) : null}
-
-        <div className="sticky top-0 z-20 mb-5 rounded-2xl border border-brand-line bg-white/95 px-4 py-4 shadow-sm backdrop-blur md:px-5">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Section Progress</p>
-              <p className="text-sm font-semibold text-brand-ink">
-                Step {visibleSectionIndex + 1} of {visibleSections.length}
-              </p>
-            </div>
-          </div>
-
-          <div className="relative pt-0">
-            <div className="absolute left-0 right-0 top-[18px] h-[3px] rounded-full bg-slate-200" />
-            <div
-              className="absolute left-0 top-[18px] h-[3px] rounded-full bg-slate-700 transition-all duration-300"
-              style={{
-                width: `${visibleSections.length > 1 ? (visibleSectionIndex / (visibleSections.length - 1)) * 100 : 100}%`
-              }}
-            />
-            <div className={`grid gap-1 md:gap-2`} style={{ gridTemplateColumns: `repeat(${visibleSections.length}, minmax(0, 1fr))` }} data-grid-cols={visibleSections.length}>
-            {visibleSections.map((section, index) => {
-              const isActive = section === activeSection;
-              const isCompleted = index < visibleSectionIndex;
-              const isDone = isActive || isCompleted;
-              const sectionLabels: Record<SectionKey, string> = {
-                A: "Training Info",
-                B: "Objectives",
-                C: "Feedback",
-                D: "Skills & Follow-up",
-                F: "Reflection",
-                G: "Sign-off"
-              };
-
-              return (
-                <button
-                  key={section}
-                  type="button"
-                  onClick={() => setActiveSection(section)}
-                  className="group relative px-1 pb-1.5 pt-0 text-center transition"
-                >
-                  <span
-                    className={`mx-auto mb-2 flex size-8 items-center justify-center rounded-full border text-sm font-bold transition md:size-9 ${
-                      isDone
-                        ? "border-slate-700 bg-slate-700 text-white"
-                        : "border-slate-300 bg-white text-slate-400"
-                    }`}
-                  >
-                    {index + 1}
-                  </span>
-                  <span
-                    className={`block text-center text-[11px] font-medium transition md:text-xs ${
-                      isDone ? "text-slate-700" : "text-slate-500"
-                    }`}
-                  >
-                    {sectionLabels[section]}
-                  </span>
-                </button>
-              );
-            })}
-            </div>
-          </div>
-        </div>
 
         <div className="space-y-5">
           {activeSection === "A" && visibleSections.includes("A") ? (
@@ -1791,8 +2135,18 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 <div className="md:col-span-2 rounded-xl border border-brand-line bg-slate-50 p-4">
                   <p className="text-sm font-semibold text-brand-ink">Trainee Link / QR Distribution</p>
                   <p className="mt-1 text-xs text-slate-600">
-                    The trainee QR code is available only after Section A + B are completed by the trainer.
+                    Submit the assessment to open trainee feedback and generate the QR code/link.
                   </p>
+                  <div className="mt-3 grid gap-3 md:max-w-xs">
+                    <TextInput
+                      label="Open for feedback (hours)"
+                      type="number"
+                      min={1}
+                      placeholder="e.g. 24"
+                      value={feedbackOpenHours}
+                      onChange={setFeedbackOpenHours}
+                    />
+                  </div>
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <button
                       type="button"
@@ -1800,7 +2154,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                       disabled={!isSectionABComplete}
                       className="rounded-lg border border-slate-700 bg-slate-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300"
                     >
-                      Generate Trainee QR
+                      Submit
                     </button>
                     <span className="text-xs font-medium text-slate-500">
                       {isSectionABComplete ? "A+B complete" : "Complete required A+B fields to enable"}
@@ -2569,7 +2923,17 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                   No supervisor assigned. Contact admin before submitting.
                 </p>
               ) : null}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+              {userRole === "trainer" && !readOnly ? (
+                <button
+                  type="button"
+                  onClick={handleSaveDraft}
+                  disabled={isSavingDraft}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand-ruby hover:text-brand-ruby disabled:opacity-60"
+                >
+                  {isSavingDraft ? "Saving…" : "Save draft"}
+                </button>
+              ) : null}
               {isLastSection && userRole === "supervisor" ? (
                 <button
                   type="button"
@@ -2591,13 +2955,22 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                       ? "Approve Submission"
                       : "Submit Feedback"}
                 </button>
+              ) : userRole === "trainer" && activeSection === "A" && (!distributedFormId || isDraftForm) && !isPublishedForFeedback ? (
+                <button
+                  type="button"
+                  onClick={handleDistributeTraineeQr}
+                  disabled={!isSectionABComplete}
+                  className="rounded-lg border border-slate-700 bg-slate-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300"
+                >
+                  Publish &amp; open feedback
+                </button>
               ) : (
                 <button
                   type="button"
                   onClick={goToNextSection}
                   className="rounded-lg border border-slate-700 bg-slate-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
                 >
-                  Next ?
+                  Next
                 </button>
               )}
               </div>

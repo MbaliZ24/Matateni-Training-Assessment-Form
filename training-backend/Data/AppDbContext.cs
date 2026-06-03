@@ -23,6 +23,18 @@ public class AppDbContext : DbContext
     {
         modelBuilder.Entity<User>().ToTable("User");
 
+        modelBuilder.Entity<User>()
+            .HasOne(u => u.Supervisor)
+            .WithMany(u => u.SupervisedTrainers)
+            .HasForeignKey(u => u.SupervisorId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        modelBuilder.Entity<TrainingSession>()
+            .HasOne(t => t.AssignedSupervisor)
+            .WithMany()
+            .HasForeignKey(t => t.AssignedSupervisorId)
+            .OnDelete(DeleteBehavior.NoAction);
+
         modelBuilder.Entity<TrainingSession>()
             .HasMany(t => t.Objectives)
             .WithOne(o => o.TrainingSession)

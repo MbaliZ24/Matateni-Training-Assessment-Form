@@ -1,7 +1,7 @@
 // App state store for auth + assessment workflow.
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { loginUser, registerUser, submitFeedback } from "../lib/api";
+import { getUsers, loginUser, registerUser, setAuthToken, submitFeedback, updateUserApi } from "../lib/api";
 import type { NotificationItem, Role, TrainingForm, User } from "../types";
 
 const users: User[] = [];
@@ -15,8 +15,10 @@ type AppState = {
   forms: TrainingForm[];
   notifications: NotificationItem[];
   currentUser: User | null;
+  authToken: string | null;
   selectedReviewFormId: string | null;
   loading: boolean;
+  loadUsers: () => Promise<void>;
   addUser: (payload: {
     name: string;
     email: string;
@@ -25,7 +27,10 @@ type AppState = {
     department: string;
     supervisorId?: string;
   }) => Promise<boolean>;
-  updateUser: (id: string, patch: Partial<Pick<User, "name" | "email" | "role" | "department" | "supervisorId" | "isActive">>) => boolean;
+  updateUser: (
+    id: string,
+    patch: Partial<Pick<User, "name" | "email" | "role" | "department" | "supervisorId" | "isActive">>
+  ) => Promise<boolean>;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   setSelectedReviewFormId: (id: string | null) => void;
@@ -69,12 +74,24 @@ export const useAppStore = create<AppState>()(
       forms,
       notifications,
       currentUser: null,
+      authToken: null,
       selectedReviewFormId: null,
       loading: false,
+      loadUsers: async () => {
+        const response = await getUsers();
+        const backendUsers = response.map(apiUserToUser);
+        const currentUser = get().currentUser;
+
+        set({
+          users: backendUsers,
+          currentUser: currentUser
+            ? backendUsers.find((user) => user.id === currentUser.id) ?? currentUser
+            : null
+        });
+      },
       addUser: async (payload) => {
         const email = payload.email.trim().toLowerCase();
         if (!email) return false;
-        if (get().users.some((u) => u.email.toLowerCase() === email)) return false;
         let newUser: User;
         try {
           const response = await registerUser({
@@ -82,7 +99,8 @@ export const useAppStore = create<AppState>()(
             Email: email,
             Password: payload.password,
             Role: roleToApiRole(payload.role),
-            DepartmentId: null
+            DepartmentId: payload.department.trim() || null,
+            SupervisorId: payload.role === "trainer" ? payload.supervisorId ?? null : null
           });
           newUser = {
             id: response.userId,
@@ -94,6 +112,7 @@ export const useAppStore = create<AppState>()(
             supervisorId: payload.role === "trainer" ? payload.supervisorId : undefined,
             isActive: true
           };
+          await get().loadUsers();
         } catch {
           return false;
         }
@@ -113,27 +132,59 @@ export const useAppStore = create<AppState>()(
         });
         return true;
       },
-      updateUser: (id, patch) => {
+      updateUser: async (id, patch) => {
         const existing = get().users.find((u) => u.id === id);
         if (!existing) return false;
+
+        const nextRole = patch.role ?? existing.role;
+        const nextSupervisorId = nextRole === "trainer" ? (patch.supervisorId ?? existing.supervisorId) : undefined;
+
+        try {
+          await updateUserApi(id, {
+            Role: patch.role ? roleToApiRole(patch.role) : undefined,
+            DepartmentId: patch.department !== undefined ? patch.department || null : undefined,
+            SupervisorId: patch.supervisorId !== undefined ? patch.supervisorId || null : undefined
+          });
+        } catch {
+          return false;
+        }
+
+        const currentUser = get().currentUser;
         set({
           users: get().users.map((u) => {
             if (u.id !== id) return u;
-            const nextRole = patch.role ?? u.role;
             return {
               ...u,
               ...patch,
-              supervisorId: nextRole === "trainer" ? (patch.supervisorId ?? u.supervisorId) : undefined
+              supervisorId: nextSupervisorId
             };
-          })
+          }),
+          currentUser:
+            currentUser?.id === id
+              ? {
+                  ...currentUser,
+                  ...patch,
+                  supervisorId: nextSupervisorId
+                }
+              : currentUser
         });
         return true;
       },
       login: async (email, password) => {
         try {
           const response = await loginUser({ Email: email, Password: password });
+          setAuthToken(response.token);
+
           const role = apiRoleToRole(response.role);
-          const existing = get().users.find((u) => u.email.toLowerCase() === response.email.toLowerCase());
+          let backendUsers: User[] = [];
+
+          try {
+            backendUsers = (await getUsers()).map(apiUserToUser);
+          } catch {
+            // Login still succeeds if the user list cannot be loaded.
+          }
+
+          const existing = backendUsers.find((u) => u.email.toLowerCase() === response.email.toLowerCase());
           const user: User = {
             id: response.userId,
             name: response.fullName,
@@ -141,20 +192,25 @@ export const useAppStore = create<AppState>()(
             password: "",
             role,
             department: existing?.department ?? "",
-            supervisorId: existing?.supervisorId,
+            supervisorId: response.supervisorId ?? existing?.supervisorId,
             isActive: true
           };
 
           set({
             currentUser: user,
-            users: [user, ...get().users.filter((u) => u.email.toLowerCase() !== user.email.toLowerCase())]
+            authToken: response.token,
+            users: backendUsers.some((u) => u.id === user.id) ? backendUsers : [user, ...backendUsers]
           });
           return true;
         } catch {
+          setAuthToken(null);
           return false;
         }
       },
-      logout: () => set({ currentUser: null }),
+      logout: () => {
+        setAuthToken(null);
+        set({ currentUser: null, authToken: null });
+      },
       setSelectedReviewFormId: (id) => set({ selectedReviewFormId: id }),
       updateFormStatus: (id, status) => set({ forms: get().forms.map((f) => (f.id === id ? { ...f, status } : f)) }),
       addForm: (form) =>
@@ -163,10 +219,10 @@ export const useAppStore = create<AppState>()(
         }),
       submitTraineeFeedback: async (payload) => {
         const target = get().forms.find((form) => form.id === payload.formId);
-        if (!target) return false;
+        const sessionIdFromFormId = Number(payload.formId.replace(/^F-/, ""));
+        const backendSessionId = target?.backendSessionId ?? (Number.isFinite(sessionIdFromFormId) ? sessionIdFromFormId : undefined);
 
-        const trainingSessionId = Number(payload.formId.replace(/^F-/, ""));
-        if (Number.isFinite(trainingSessionId) && trainingSessionId > 0) {
+        if (backendSessionId) {
           const answers = payload.statementRatings.map((rating, index) => ({
             Question: [
               "The training objectives were clear.",
@@ -186,7 +242,7 @@ export const useAppStore = create<AppState>()(
 
           try {
             await submitFeedback({
-              TrainingSessionId: trainingSessionId,
+              TrainingSessionId: backendSessionId,
               TraineeName: payload.traineeName,
               Answers: answers
             });
@@ -195,6 +251,8 @@ export const useAppStore = create<AppState>()(
           }
         }
 
+        if (!target) return true;
+
         set({
           forms: get().forms.map((form) => {
             if (form.id !== payload.formId) return form;
@@ -202,13 +260,13 @@ export const useAppStore = create<AppState>()(
             const nextCount = form.feedbackResponses + 1;
             const nextAverage =
               (form.averageScore * form.feedbackResponses + payload.averageScore) / Math.max(1, nextCount);
+            const responseLimitReached = form.trainees > 0 && nextCount >= form.trainees;
 
             return {
               ...form,
               feedbackResponses: nextCount,
               averageScore: Number(nextAverage.toFixed(1)),
-              // Keep drafts as drafts until trainer explicitly submits the full form.
-              status: form.status === "Draft" ? "Draft" : form.status,
+              status: responseLimitReached ? "Feedback Closed" : form.status,
               supervisorOnlyFeedback: [
                 ...(form.supervisorOnlyFeedback ?? []),
                 {
@@ -308,15 +366,23 @@ export const useAppStore = create<AppState>()(
       }
     }),
     {
-      name: "matateni-app-store-v6",
+      name: "matateni-app-store-v9",
+      partialize: (state) => ({
+        currentUser: state.currentUser,
+        authToken: state.authToken,
+        selectedReviewFormId: state.selectedReviewFormId,
+        forms: state.forms
+      }),
       merge: (persistedState, currentState) => {
         const persisted = (persistedState ?? {}) as Partial<AppState>;
+        const authToken = persisted.authToken ?? currentState.authToken;
+        setAuthToken(authToken);
         return {
           ...currentState,
-          ...persisted,
-          forms: Array.isArray(persisted.forms) ? persisted.forms : currentState.forms,
-          users: sanitizePersistedUsers(persisted.users),
-          currentUser: null
+          selectedReviewFormId: persisted.selectedReviewFormId ?? currentState.selectedReviewFormId,
+          currentUser: persisted.currentUser ?? currentState.currentUser,
+          authToken,
+          forms: persisted.forms ?? currentState.forms
         };
       }
     }
@@ -341,15 +407,26 @@ function apiRoleToRole(role: number | string): Role {
   return "admin";
 }
 
-function sanitizePersistedUsers(persistedUsers: AppState["users"] | undefined) {
-  if (!Array.isArray(persistedUsers)) return users;
-
-  const oldDemoEmails = new Set(["trainer@matateni.com", "supervisor@matateni.com", "admin@matateni.com"]);
-
-  return persistedUsers
-    .filter((user) => !(oldDemoEmails.has(user.email.toLowerCase()) && user.password === "demo123"))
-    .map((user) => ({ ...user, password: "" }));
+function apiUserToUser(response: {
+  userId: string;
+  fullName: string;
+  email: string;
+  role: number | string;
+  department?: string | null;
+  supervisorId?: string | null;
+}): User {
+  return {
+    id: response.userId,
+    name: response.fullName,
+    email: response.email,
+    password: "",
+    role: apiRoleToRole(response.role),
+    department: response.department ?? "",
+    supervisorId: response.supervisorId ?? undefined,
+    isActive: true
+  };
 }
+
 
 
 

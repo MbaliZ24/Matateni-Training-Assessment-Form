@@ -13,6 +13,8 @@ public class RegisterUserDto
     public Role Role { get; set; }
 
     public string? DepartmentId { get; set; }
+
+    public string? SupervisorId { get; set; }
 }
 
 public class LoginDto
@@ -33,6 +35,17 @@ public class AuthResponseDto
     public string Email { get; set; } = string.Empty;
 
     public Role Role { get; set; }
+
+    public string? SupervisorId { get; set; }
+}
+
+public class UpdateUserDto
+{
+    public Role? Role { get; set; }
+
+    public string? DepartmentId { get; set; }
+
+    public string? SupervisorId { get; set; }
 }
 
 public class UserDto
@@ -48,4 +61,6 @@ public class UserDto
     public string? DepartmentId { get; set; }
 
     public string Department { get; set; } = string.Empty;
+
+    public string? SupervisorId { get; set; }
 }

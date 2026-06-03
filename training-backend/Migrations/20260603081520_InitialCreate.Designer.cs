@@ -12,7 +12,7 @@ using training_backend.Data;
 namespace training_backend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260601113227_InitialCreate")]
+    [Migration("20260603081520_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -505,10 +505,16 @@ namespace training_backend.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("AssignedSupervisorId")
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Department")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DraftPayloadJson")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int?>("DurationDays")
@@ -517,11 +523,17 @@ namespace training_backend.Migrations
                     b.Property<int?>("DurationHours")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("FeedbackClosesAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<int?>("NumberOfTrainees")
                         .HasColumnType("int");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
+
+                    b.Property<string>("SubmittedPayloadJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("TargetAudience")
                         .HasColumnType("nvarchar(max)");
@@ -530,8 +542,9 @@ namespace training_backend.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("TrainerId")
-                        .HasColumnType("int");
+                    b.Property<string>("TrainerId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("TrainingDate")
                         .HasColumnType("datetime2");
@@ -540,6 +553,8 @@ namespace training_backend.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AssignedSupervisorId");
 
                     b.ToTable("TrainingSessions");
                 });
@@ -570,11 +585,16 @@ namespace training_backend.Migrations
                     b.Property<int>("Role")
                         .HasColumnType("int");
 
+                    b.Property<string>("SupervisorId")
+                        .HasColumnType("nvarchar(450)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("DepartmentId");
 
-                    b.ToTable("User");
+                    b.HasIndex("SupervisorId");
+
+                    b.ToTable("User", (string)null);
                 });
 
             modelBuilder.Entity("training_backend.Models.Entities.FeedbackAnswer", b =>
@@ -708,13 +728,30 @@ namespace training_backend.Migrations
                     b.Navigation("TrainingSession");
                 });
 
+            modelBuilder.Entity("training_backend.Models.Entities.TrainingSession", b =>
+                {
+                    b.HasOne("training_backend.Models.Entities.User", "AssignedSupervisor")
+                        .WithMany()
+                        .HasForeignKey("AssignedSupervisorId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("AssignedSupervisor");
+                });
+
             modelBuilder.Entity("training_backend.Models.Entities.User", b =>
                 {
                     b.HasOne("training_backend.Models.Entities.Department", "Department")
                         .WithMany("Users")
                         .HasForeignKey("DepartmentId");
 
+                    b.HasOne("training_backend.Models.Entities.User", "Supervisor")
+                        .WithMany("SupervisedTrainers")
+                        .HasForeignKey("SupervisorId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.Navigation("Department");
+
+                    b.Navigation("Supervisor");
                 });
 
             modelBuilder.Entity("training_backend.Models.Entities.Department", b =>
@@ -764,6 +801,8 @@ namespace training_backend.Migrations
                     b.Navigation("Assessments");
 
                     b.Navigation("FollowUps");
+
+                    b.Navigation("SupervisedTrainers");
                 });
 #pragma warning restore 612, 618
         }

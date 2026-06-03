@@ -1,4 +1,4 @@
-﻿import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Download, Eye } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -6,24 +6,72 @@ import { StatusBadge } from "../../components/ui/status-badge";
 import { useAppStore } from "../../store/app-store";
 import { exportSignedFormPdf } from "../../lib/export";
 import { isInStatuses, TRAINER_SUBMISSION_STATUSES } from "../../lib/form-status";
+import { getTrainerSessions } from "../../lib/api";
+import { mapBackendSessionToForm } from "../../lib/session-forms";
+import type { TrainingForm } from "../../types";
 
 export function TrainerSubmissionsPage() {
   const navigate = useNavigate();
   const forms = useAppStore((s) => s.forms);
   const users = useAppStore((s) => s.users);
   const currentUser = useAppStore((s) => s.currentUser);
+  const addForm = useAppStore((s) => s.addForm);
+  const [backendForms, setBackendForms] = useState<TrainingForm[]>([]);
+  const [isFetching, setIsFetching] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const mySubmissions = useMemo(
-    () =>
-      forms
-        .filter(
-          (f) =>
-            f.trainerId === currentUser?.id &&
-            isInStatuses(f.status, TRAINER_SUBMISSION_STATUSES)
-        )
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [forms, currentUser?.id]
-  );
+  useEffect(() => {
+    const trainerId = currentUser?.id;
+
+    if (!trainerId) {
+      setBackendForms([]);
+      return;
+    }
+
+    let cancelled = false;
+    setIsFetching(true);
+    setFetchError(null);
+
+    getTrainerSessions(trainerId)
+      .then((sessions) => {
+        if (cancelled) return;
+        const fetchedForms = sessions
+          .map((session) =>
+            mapBackendSessionToForm(session, {
+              fallbackSupervisorId: currentUser?.supervisorId,
+              fallbackDepartment: currentUser?.department
+            })
+          )
+          .filter((form) => isInStatuses(form.status, TRAINER_SUBMISSION_STATUSES));
+
+        fetchedForms.forEach(addForm);
+        setBackendForms(fetchedForms);
+      })
+      .catch(() => {
+        if (!cancelled) setFetchError("Unable to fetch submissions from the backend.");
+      })
+      .finally(() => {
+        if (!cancelled) setIsFetching(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [addForm, currentUser?.department, currentUser?.id, currentUser?.supervisorId]);
+
+  const mySubmissions = useMemo(() => {
+    const formsById = new Map<string, TrainingForm>();
+    backendForms.forEach((form) => formsById.set(form.id, form));
+    forms.forEach((form) => formsById.set(form.id, form));
+
+    return Array.from(formsById.values())
+      .filter(
+        (f) =>
+          f.trainerId === currentUser?.id &&
+          isInStatuses(f.status, TRAINER_SUBMISSION_STATUSES)
+      )
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }, [backendForms, forms, currentUser?.id]);
 
   const supervisorName = (supervisorId?: string) =>
     users.find((u) => u.id === supervisorId)?.name ||
@@ -35,7 +83,10 @@ export function TrainerSubmissionsPage() {
       <Card className="rounded-2xl border-slate-200 shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-lg font-semibold text-slate-900">My Submissions</CardTitle>
-          <p className="text-xs text-slate-500">Proof of submitted training assessments.</p>
+          <p className="text-xs text-slate-500">
+            {isFetching ? "Fetching submitted training assessments..." : "Proof of submitted training assessments."}
+          </p>
+          {fetchError ? <p className="text-xs text-red-600">{fetchError}</p> : null}
         </CardHeader>
         <CardContent className="pt-0">
           <div className="overflow-x-auto rounded-xl border border-slate-100">
@@ -99,5 +150,4 @@ export function TrainerSubmissionsPage() {
     </div>
   );
 }
-
 

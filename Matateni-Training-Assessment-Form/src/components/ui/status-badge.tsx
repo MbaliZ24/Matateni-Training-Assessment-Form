@@ -5,6 +5,7 @@ import type { Status } from "../../types";
 const map: Record<Status, string> = {
   Draft: "bg-slate-100 text-slate-700",
   "Waiting for Feedback": "bg-rose-100 text-rose-800",
+  "Feedback Closed": "bg-zinc-200 text-zinc-800",
   Submitted: "bg-slate-200 text-slate-800",
   "Under Review": "bg-amber-100 text-amber-800",
   Approved: "bg-emerald-100 text-emerald-700",

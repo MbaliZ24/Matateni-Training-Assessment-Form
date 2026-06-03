@@ -1,10 +1,12 @@
 ﻿// Central route map: keeps role-based navigation predictable in one place.
+import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { ExactAssessmentFormPage } from "./pages/trainer/ExactAssessmentFormPage";
 import { TrainerFeedbackPage } from "./pages/trainer/TrainerFeedbackPage";
 import { TrainerSubmissionsPage } from "./pages/trainer/TrainerSubmissionsPage";
+import { TrainerDraftsPage } from "./pages/trainer/TrainerDraftsPage";
 import { TrainerSubmissionViewPage } from "./pages/trainer/TrainerSubmissionViewPage";
 import { TraineeFeedbackPage } from "./pages/trainee/TraineeFeedbackPage";
 import { SupervisorDashboardPage } from "./pages/supervisor/SupervisorDashboardPage";
@@ -41,6 +43,34 @@ function HomeRedirect() {
 
 export default function App() {
   const user = useAppStore((s) => s.currentUser);
+  const forms = useAppStore((s) => s.forms);
+  const loadUsers = useAppStore((s) => s.loadUsers);
+  const updateFormStatus = useAppStore((s) => s.updateFormStatus);
+
+  useEffect(() => {
+    if (user) {
+      loadUsers().catch(() => undefined);
+    }
+  }, [loadUsers, user?.id]);
+
+  useEffect(() => {
+    const closeExpiredFeedback = () => {
+      const now = Date.now();
+      forms.forEach((form) => {
+        if (
+          form.status === "Waiting for Feedback" &&
+          form.feedbackClosesAt &&
+          new Date(form.feedbackClosesAt).getTime() <= now
+        ) {
+          updateFormStatus(form.id, "Feedback Closed");
+        }
+      });
+    };
+
+    closeExpiredFeedback();
+    const timer = window.setInterval(closeExpiredFeedback, 30000);
+    return () => window.clearInterval(timer);
+  }, [forms, updateFormStatus]);
 
   return (
     <Routes>
@@ -51,6 +81,7 @@ export default function App() {
       <Route element={<Protected role="trainer" />}>
         <Route path="/trainer" element={<Navigate to="/trainer/create" replace />} />
         <Route path="/trainer/create" element={<ExactAssessmentFormPage />} />
+        <Route path="/trainer/drafts" element={<TrainerDraftsPage />} />
         <Route path="/trainer/feedback" element={<TrainerFeedbackPage />} />
         <Route path="/trainer/submissions" element={<TrainerSubmissionsPage />} />
         <Route path="/trainer/submissions/view" element={<TrainerSubmissionViewPage />} />

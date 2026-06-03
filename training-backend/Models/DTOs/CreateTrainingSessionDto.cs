@@ -2,7 +2,7 @@ namespace training_backend.Models.DTOs;
 
 public class CreateTrainingSessionDto
 {
-    public int TrainerId { get; set; }
+    public string TrainerId { get; set; } = string.Empty;
 
     public string Title { get; set; } = string.Empty;
 
@@ -15,6 +15,8 @@ public class CreateTrainingSessionDto
     public int? DurationHours { get; set; }
 
     public int? NumberOfTrainees { get; set; }
+
+    public int? FeedbackOpenHours { get; set; }
 
     public List<string> TrainingFormat { get; set; } = new();
 
