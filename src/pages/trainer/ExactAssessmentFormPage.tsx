@@ -1085,6 +1085,71 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     });
   }, [userRole, linkedForm, numberOfTrainees]);
 
+  useEffect(() => {
+    if (userRole !== "trainer") return;
+    if (!linkedForm) return;
+    if (linkedForm.status !== "Draft" && linkedForm.status !== "Needs Correction") return;
+
+    // Keep editable drafts synced into the saved form record so logout/login does not drop in-progress work.
+    const nextSubmittedData = buildSubmittedData();
+    const nextSnapshot = JSON.stringify({
+      title: trainingTitle || linkedForm.title,
+      department: trainerDepartment || linkedForm.department,
+      date: trainingDate || linkedForm.date,
+      trainees: Number(numberOfTrainees) || traineeRoster.length || linkedForm.trainees,
+      submittedData: nextSubmittedData
+    });
+    const currentSnapshot = JSON.stringify({
+      title: linkedForm.title,
+      department: linkedForm.department,
+      date: linkedForm.date,
+      trainees: linkedForm.trainees,
+      submittedData: linkedForm.submittedData
+    });
+
+    if (currentSnapshot === nextSnapshot) return;
+
+    addForm({
+      ...linkedForm,
+      title: trainingTitle || linkedForm.title,
+      department: trainerDepartment || linkedForm.department,
+      date: trainingDate || linkedForm.date,
+      trainees: Number(numberOfTrainees) || traineeRoster.length || linkedForm.trainees,
+      submittedData: nextSubmittedData
+    });
+  }, [
+    userRole,
+    linkedForm,
+    addForm,
+    trainerName,
+    trainerDepartment,
+    trainingTitle,
+    trainingDate,
+    trainingDurationDays,
+    trainingDurationHours,
+    numberOfTrainees,
+    objectives,
+    observedImprovement,
+    trainingFormats,
+    targetUserGroup,
+    feedbackDeadline,
+    followUpSupervisorName,
+    applicationExtent,
+    observedImprovementDetails,
+    supportNeeded,
+    barriersComment,
+    workedWellComment,
+    effectivenessRating,
+    recommendationChoice,
+    trainerFutureSessionComment,
+    supervisorFutureSessionComment,
+    signatures,
+    signOff,
+    ratings,
+    traineeRoster,
+    trainees
+  ]);
+
   const updateObjective = (index: number, value: string) => {
     setObjectives((prev) => {
       const next = [...prev];

@@ -29,7 +29,7 @@ export function TrainerSubmissionViewPage() {
 
   return (
     <ExactAssessmentFormPage
-      readOnly={target.status !== "Draft"}
+      readOnly={target.status !== "Draft" && target.status !== "Needs Correction"}
       reviewFormId={target.id}
       submittedData={target.submittedData}
     />
