@@ -50,6 +50,7 @@ export function TraineeFeedbackPage() {
     publicClosed ||
     targetForm?.status === "Draft" ||
     targetForm?.status === "Feedback Closed" ||
+    targetForm?.status === "Trainer Assessment Pending" ||
     (targetForm?.feedbackClosesAt ? new Date(targetForm.feedbackClosesAt).getTime() <= Date.now() : false);
   const [traineeName, setTraineeName] = useState("");
   const [employeeId, setEmployeeId] = useState("");

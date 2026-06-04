@@ -62,7 +62,7 @@ export default function App() {
           form.feedbackClosesAt &&
           new Date(form.feedbackClosesAt).getTime() <= now
         ) {
-          updateFormStatus(form.id, "Feedback Closed");
+          updateFormStatus(form.id, "Trainer Assessment Pending");
         }
       });
     };

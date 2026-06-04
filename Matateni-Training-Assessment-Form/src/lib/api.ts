@@ -221,6 +221,13 @@ export async function getTrainingSession(sessionId: number) {
   return fetchJson<TrainingSessionDetailDto>(`/api/TrainingSessions/${sessionId}`);
 }
 
+export async function deleteTrainingSessionDraft(sessionId: number, trainerId: string) {
+  return fetchJson<{ message: string }>(
+    `/api/TrainingSessions/${sessionId}/draft?trainerId=${encodeURIComponent(trainerId)}`,
+    { method: "DELETE" }
+  );
+}
+
 export async function publishTrainingSession(sessionId: number, payload: PublishTrainingSessionDto) {
   return fetchJson<{ sessionId: number; message: string }>(`/api/TrainingSessions/${sessionId}/publish`, {
     method: "POST",
@@ -239,6 +246,10 @@ export async function submitFeedback(payload: CreateFeedbackSubmissionDto) {
 
 export async function getFeedbackSummary(sessionId: number) {
   return fetchJson<unknown>(`/api/Feedback/session/${sessionId}/summary`);
+}
+
+export async function getSessionFeedbackEntries(sessionId: number) {
+  return fetchJson<unknown[]>(`/api/Feedback/session/${sessionId}/entries`);
 }
 
 export function getTrainingSessionQrUrl(sessionId: number) {

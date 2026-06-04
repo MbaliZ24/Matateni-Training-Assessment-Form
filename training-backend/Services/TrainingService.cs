@@ -69,11 +69,25 @@ public class TrainingService : ITrainingService
         {
             session = await _context.TrainingSessions
                 .Include(x => x.Objectives)
+                .Include(x => x.TrainerReport)
                 .FirstOrDefaultAsync(x => x.Id == dto.SessionId && x.TrainerId == dto.TrainerId)
-                ?? throw new Exception("Draft session not found.");
+                ?? throw new Exception("Training session not found.");
 
-            if (session.Status != AssessmentStatus.DRAFT)
-                throw new Exception("Only draft assessments can be edited.");
+            if (session.TrainerReport?.SubmittedToSupervisor == true)
+                throw new Exception("Cannot edit an assessment already submitted to supervisor.");
+
+            if (session.Status == AssessmentStatus.DRAFT)
+            {
+                ApplySessionFields(session, dto);
+                session.DraftPayloadJson = dto.DraftPayload;
+                session.Status = AssessmentStatus.DRAFT;
+                session.FeedbackClosesAt = null;
+            }
+            else
+            {
+                ApplySessionFields(session, dto);
+                session.DraftPayloadJson = dto.DraftPayload;
+            }
         }
         else
         {
@@ -84,16 +98,28 @@ public class TrainingService : ITrainingService
                 CreatedAt = DateTime.UtcNow
             };
             _context.TrainingSessions.Add(session);
+            ApplySessionFields(session, dto);
+            session.DraftPayloadJson = dto.DraftPayload;
+            session.FeedbackClosesAt = null;
         }
-
-        ApplySessionFields(session, dto);
-        session.DraftPayloadJson = dto.DraftPayload;
-        session.Status = AssessmentStatus.DRAFT;
-        session.FeedbackClosesAt = null;
 
         await _context.SaveChangesAsync();
         await ReplaceObjectivesAsync(session, dto.Objectives);
         return session.Id;
+    }
+
+    public async Task DeleteDraftAsync(int sessionId, string trainerId)
+    {
+        var session = await _context.TrainingSessions
+            .Include(x => x.Objectives)
+            .FirstOrDefaultAsync(x => x.Id == sessionId && x.TrainerId == trainerId)
+            ?? throw new Exception("Draft not found.");
+
+        if (session.Status != AssessmentStatus.DRAFT)
+            throw new Exception("Only draft assessments can be deleted.");
+
+        _context.TrainingSessions.Remove(session);
+        await _context.SaveChangesAsync();
     }
 
     public async Task<TrainingSessionDetailDto> GetSessionAsync(int sessionId)
@@ -103,6 +129,7 @@ public class TrainingService : ITrainingService
             .FirstOrDefaultAsync(x => x.Id == sessionId)
             ?? throw new Exception("Training session not found.");
 
+        await RefreshSessionStatusAsync(session);
         return MapSessionDetail(session);
     }
 
@@ -146,10 +173,10 @@ public class TrainingService : ITrainingService
         var session = await _context.TrainingSessions.FindAsync(sessionId)
             ?? throw new Exception("Training session not found.");
 
+        await RefreshSessionStatusAsync(session);
+
         var status = MapSessionStatus(session.Status);
-        var feedbackOpen =
-            session.Status == AssessmentStatus.OPENFORFEEDBACK &&
-            (!session.FeedbackClosesAt.HasValue || session.FeedbackClosesAt.Value > DateTime.UtcNow);
+        var feedbackOpen = session.Status == AssessmentStatus.OPENFORFEEDBACK;
 
         return new PublicTrainingSessionDto
         {
@@ -171,6 +198,11 @@ public class TrainingService : ITrainingService
             .OrderByDescending(x => x.TrainerReport!.TrainerDate)
             .ToListAsync();
 
+        foreach (var session in sessions)
+        {
+            await RefreshSessionStatusAsync(session);
+        }
+
         return sessions.Select(MapSessionSummary).ToList();
     }
 
@@ -183,6 +215,11 @@ public class TrainingService : ITrainingService
             .Where(x => x.TrainerId == trainerId)
             .OrderByDescending(x => x.CreatedAt)
             .ToListAsync();
+
+        foreach (var session in sessions)
+        {
+            await RefreshSessionStatusAsync(session);
+        }
 
         return sessions.Select(MapSessionSummary).ToList();
     }
@@ -296,8 +333,38 @@ public class TrainingService : ITrainingService
         {
             AssessmentStatus.OPENFORFEEDBACK => "Waiting for Feedback",
             AssessmentStatus.FEEDBACKCLOSED => "Feedback Closed",
+            AssessmentStatus.TRAINERASSESSMENTPENDING => "Trainer Assessment Pending",
+            AssessmentStatus.FOLLOWUPPENDING => "Follow-up Pending",
             AssessmentStatus.COMPLETED => "Completed",
             _ => "Draft"
         };
+    }
+
+    private async Task RefreshSessionStatusAsync(TrainingSession session)
+    {
+        var previous = session.Status;
+        CloseExpiredTraineeFeedback(session);
+        if (session.Status != previous)
+        {
+            await _context.SaveChangesAsync();
+        }
+    }
+
+    private static void CloseExpiredTraineeFeedback(TrainingSession session)
+    {
+        if (session.Status == AssessmentStatus.FEEDBACKCLOSED)
+        {
+            session.Status = AssessmentStatus.TRAINERASSESSMENTPENDING;
+            return;
+        }
+
+        if (
+            session.Status == AssessmentStatus.OPENFORFEEDBACK &&
+            session.FeedbackClosesAt.HasValue &&
+            session.FeedbackClosesAt.Value <= DateTime.UtcNow
+        )
+        {
+            session.Status = AssessmentStatus.TRAINERASSESSMENTPENDING;
+        }
     }
 }

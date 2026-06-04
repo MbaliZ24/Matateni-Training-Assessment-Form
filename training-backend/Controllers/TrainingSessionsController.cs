@@ -94,6 +94,20 @@ public class TrainingSessionsController : ControllerBase
         }
     }
 
+    [HttpDelete("{id:int}/draft")]
+    public async Task<IActionResult> DeleteDraft(int id, [FromQuery] string trainerId)
+    {
+        try
+        {
+            await _service.DeleteDraftAsync(id, trainerId);
+            return Ok(new { message = "Draft deleted" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
     [HttpPost("{id:int}/publish")]
     public async Task<IActionResult> Publish(int id, PublishTrainingSessionDto dto)
     {

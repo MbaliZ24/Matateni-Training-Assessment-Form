@@ -36,6 +36,7 @@ type AppState = {
   setSelectedReviewFormId: (id: string | null) => void;
   updateFormStatus: (id: string, status: TrainingForm["status"]) => void;
   addForm: (form: TrainingForm) => void;
+  removeForm: (id: string) => void;
   submitTraineeFeedback: (payload: {
     formId: string;
     traineeName: string;
@@ -217,6 +218,10 @@ export const useAppStore = create<AppState>()(
         set({
           forms: [form, ...get().forms.filter((existingForm) => existingForm.id !== form.id)]
         }),
+      removeForm: (id) =>
+        set({
+          forms: get().forms.filter((form) => form.id !== id)
+        }),
       submitTraineeFeedback: async (payload) => {
         const target = get().forms.find((form) => form.id === payload.formId);
         const sessionIdFromFormId = Number(payload.formId.replace(/^F-/, ""));
@@ -266,7 +271,7 @@ export const useAppStore = create<AppState>()(
               ...form,
               feedbackResponses: nextCount,
               averageScore: Number(nextAverage.toFixed(1)),
-              status: responseLimitReached ? "Feedback Closed" : form.status,
+              status: responseLimitReached ? "Trainer Assessment Pending" : form.status,
               supervisorOnlyFeedback: [
                 ...(form.supervisorOnlyFeedback ?? []),
                 {

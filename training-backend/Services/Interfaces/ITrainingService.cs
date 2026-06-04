@@ -8,6 +8,7 @@ public interface ITrainingService
     Task<int> SaveDraftAsync(SaveTrainingSessionDraftDto dto);
     Task<TrainingSessionDetailDto> GetSessionAsync(int sessionId);
     Task PublishSessionAsync(int sessionId, PublishTrainingSessionDto dto);
+    Task DeleteDraftAsync(int sessionId, string trainerId);
     Task<List<TrainingSessionSummaryDto>> GetTrainerSessionsAsync(string trainerId);
     Task<List<TrainingSessionSummaryDto>> GetSupervisorSessionsAsync(string supervisorId);
     Task<PublicTrainingSessionDto> GetPublicSessionAsync(int sessionId);

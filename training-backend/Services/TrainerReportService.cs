@@ -146,7 +146,7 @@ public class TrainerReportService : ITrainerReportService
         }
 
         report.SubmittedToSupervisor = true;
-        session.Status = AssessmentStatus.TRAINERASSESSMENTPENDING;
+        session.Status = AssessmentStatus.FOLLOWUPPENDING;
 
         await _context.SaveChangesAsync();
     }

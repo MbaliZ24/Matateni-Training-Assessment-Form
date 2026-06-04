@@ -50,4 +50,19 @@ public class FeedbackController : ControllerBase
             return BadRequest(ex.Message);
         }
     }
+
+    [Authorize]
+    [HttpGet("session/{sessionId}/entries")]
+    public async Task<IActionResult> GetEntries(int sessionId)
+    {
+        try
+        {
+            var result = await _service.GetSessionEntriesAsync(sessionId);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
 }

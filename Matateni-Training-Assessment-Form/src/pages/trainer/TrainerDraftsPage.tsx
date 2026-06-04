@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { StatusBadge } from "../../components/ui/status-badge";
 import { useAppStore } from "../../store/app-store";
 import { isInStatuses, TRAINER_DRAFT_STATUSES } from "../../lib/form-status";
-import { getTrainerSessions } from "../../lib/api";
+import { deleteTrainingSessionDraft, getTrainerSessions } from "../../lib/api";
 import { mapBackendSessionToForm } from "../../lib/session-forms";
 import type { TrainingForm } from "../../types";
 
@@ -14,24 +14,24 @@ export function TrainerDraftsPage() {
   const forms = useAppStore((s) => s.forms);
   const currentUser = useAppStore((s) => s.currentUser);
   const addForm = useAppStore((s) => s.addForm);
+  const removeForm = useAppStore((s) => s.removeForm);
   const [backendDrafts, setBackendDrafts] = useState<TrainingForm[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadDrafts = () => {
     const trainerId = currentUser?.id;
     if (!trainerId) {
       setBackendDrafts([]);
       return;
     }
 
-    let cancelled = false;
     setIsFetching(true);
     setFetchError(null);
 
     getTrainerSessions(trainerId)
       .then((sessions) => {
-        if (cancelled) return;
         const drafts = sessions
           .filter((session) => session.status.trim().toLowerCase() === "draft")
           .map((session) => {
@@ -42,20 +42,15 @@ export function TrainerDraftsPage() {
             addForm(form);
             return form;
           });
-
         setBackendDrafts(drafts);
       })
-      .catch(() => {
-        if (!cancelled) setFetchError("Unable to load drafts from the server.");
-      })
-      .finally(() => {
-        if (!cancelled) setIsFetching(false);
-      });
+      .catch(() => setFetchError("Unable to load drafts from the server."))
+      .finally(() => setIsFetching(false));
+  };
 
-    return () => {
-      cancelled = true;
-    };
-  }, [addForm, currentUser?.department, currentUser?.id, currentUser?.supervisorId]);
+  useEffect(() => {
+    loadDrafts();
+  }, [currentUser?.id]);
 
   const myDrafts = useMemo(() => {
     const byId = new Map<string, TrainingForm>();
@@ -65,9 +60,31 @@ export function TrainerDraftsPage() {
         byId.set(form.id, form);
       }
     });
-
     return Array.from(byId.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }, [backendDrafts, forms, currentUser?.id]);
+
+  const handleDelete = async (form: TrainingForm) => {
+    if (!currentUser?.id) return;
+    const sessionId = form.backendSessionId ?? Number(form.id.replace(/^F-/, ""));
+    if (!Number.isFinite(sessionId) || sessionId <= 0) {
+      removeForm(form.id);
+      setBackendDrafts((prev) => prev.filter((f) => f.id !== form.id));
+      return;
+    }
+
+    if (!window.confirm(`Delete draft "${form.title}"? This cannot be undone.`)) return;
+
+    setDeletingId(form.id);
+    try {
+      await deleteTrainingSessionDraft(sessionId, currentUser.id);
+      removeForm(form.id);
+      setBackendDrafts((prev) => prev.filter((f) => f.id !== form.id));
+    } catch {
+      window.alert("Could not delete this draft. Try again.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-[980px] space-y-3">
@@ -75,7 +92,7 @@ export function TrainerDraftsPage() {
         <div>
           <h1 className="text-xl font-semibold text-slate-900">My Drafts</h1>
           <p className="text-sm text-slate-600">
-            Save work in progress, edit anytime, then publish when Section A and objectives are ready.
+            One draft per assessment. Changes auto-save while you edit. Publish from Assessments when ready.
           </p>
         </div>
         <button
@@ -92,7 +109,7 @@ export function TrainerDraftsPage() {
         <CardHeader className="pb-2">
           <CardTitle className="text-lg font-semibold text-slate-900">Draft assessments</CardTitle>
           <p className="text-xs text-slate-500">
-            {isFetching ? "Loading drafts..." : "Only you can see drafts until you publish."}
+            {isFetching ? "Loading drafts..." : `${myDrafts.length} draft(s)`}
           </p>
           {fetchError ? <p className="text-xs text-red-600">{fetchError}</p> : null}
         </CardHeader>
@@ -118,21 +135,32 @@ export function TrainerDraftsPage() {
                       <StatusBadge status={form.status} />
                     </td>
                     <td className="px-4 py-2.5">
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/trainer/create?formId=${encodeURIComponent(form.id)}`)}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                      >
-                        <Pencil className="size-3.5" />
-                        Continue editing
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/trainer/create?formId=${encodeURIComponent(form.id)}`)}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                        >
+                          <Pencil className="size-3.5" />
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(form)}
+                          disabled={deletingId === form.id}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          <Trash2 className="size-3.5" />
+                          {deletingId === form.id ? "Deleting…" : "Delete"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {myDrafts.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">
-                      No drafts yet. Start a new assessment and use Save draft.
+                      No drafts. Start a new assessment — your work auto-saves as you type.
                     </td>
                   </tr>
                 ) : null}

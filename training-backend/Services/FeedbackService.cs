@@ -29,12 +29,15 @@ public class FeedbackService : IFeedbackService
         if (session.Status == AssessmentStatus.DRAFT)
             throw new Exception("This assessment is still a draft and is not open for trainee feedback yet.");
 
-        if (
-            session.Status == AssessmentStatus.FEEDBACKCLOSED ||
-            (session.FeedbackClosesAt.HasValue && session.FeedbackClosesAt.Value <= DateTime.UtcNow)
-        )
+        if (session.Status != AssessmentStatus.OPENFORFEEDBACK)
         {
-            session.Status = AssessmentStatus.FEEDBACKCLOSED;
+            await _context.SaveChangesAsync();
+            throw new Exception("Feedback is closed for this training session");
+        }
+
+        if (session.FeedbackClosesAt.HasValue && session.FeedbackClosesAt.Value <= DateTime.UtcNow)
+        {
+            session.Status = AssessmentStatus.TRAINERASSESSMENTPENDING;
             await _context.SaveChangesAsync();
             throw new Exception("Feedback is closed for this training session");
         }
@@ -63,7 +66,7 @@ public class FeedbackService : IFeedbackService
         var nextSubmissionCount = session.FeedbackSubmissions.Count + 1;
         if (session.NumberOfTrainees.HasValue && nextSubmissionCount >= session.NumberOfTrainees.Value)
         {
-            session.Status = AssessmentStatus.FEEDBACKCLOSED;
+            session.Status = AssessmentStatus.TRAINERASSESSMENTPENDING;
         }
 
         await _context.SaveChangesAsync();
@@ -101,5 +104,26 @@ public class FeedbackService : IFeedbackService
         Questions = questionGroups
     };
 }
+
+    public async Task<List<TraineeFeedbackEntryDto>> GetSessionEntriesAsync(int sessionId)
+    {
+        var submissions = await _context.FeedbackSubmissions
+            .Where(s => s.TrainingSessionId == sessionId)
+            .Include(s => s.Answers)
+            .OrderBy(s => s.SubmittedAt)
+            .ToListAsync();
+
+        return submissions.Select(submission => new TraineeFeedbackEntryDto
+        {
+            TraineeName = submission.TraineeName,
+            SubmittedAt = submission.SubmittedAt,
+            Answers = submission.Answers.Select(answer => new FeedbackAnswerDto
+            {
+                Question = answer.Question,
+                Answer = answer.Answer,
+                Rating = answer.Rating
+            }).ToList()
+        }).ToList();
+    }
 
 }

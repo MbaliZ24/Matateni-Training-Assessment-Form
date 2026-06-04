@@ -5,6 +5,8 @@ export type Status =
   | "Draft"
   | "Waiting for Feedback"
   | "Feedback Closed"
+  | "Trainer Assessment Pending"
+  | "Follow-up Pending"
   | "Submitted"
   | "Under Review"
   | "Approved"

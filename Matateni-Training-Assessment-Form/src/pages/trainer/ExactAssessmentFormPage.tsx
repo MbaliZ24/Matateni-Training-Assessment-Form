@@ -1,14 +1,16 @@
 ﻿// Primary training assessment workflow used by trainer and reused as read-only for supervisor review.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
+  getSessionFeedbackEntries,
   getTrainingSession,
-  getTrainingSessionQrUrl,
   publishTrainingSession,
   saveTrainerReport,
   saveTrainingSessionDraft,
   submitTrainerReport
 } from "../../lib/api";
+import { isInStatuses, TRAINER_CONTINUE_ASSESSMENT_STATUSES } from "../../lib/form-status";
+import { mapApiFeedbackEntries, toUiStatus } from "../../lib/session-forms";
 import { useAppStore } from "../../store/app-store";
 import type { TrainingForm } from "../../types";
 
@@ -501,8 +503,10 @@ type TrainerDraft = {
 };
 
 export function ExactAssessmentFormPage({ readOnly = false, submittedData, reviewFormId }: ExactAssessmentFormPageProps) {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const urlFormId = searchParams.get("formId");
+  const urlSection = searchParams.get("section");
   const addForm = useAppStore((s) => s.addForm);
   const submitSupervisorReview = useAppStore((s) => s.submitSupervisorReview);
   const forms = useAppStore((s) => s.forms);
@@ -513,6 +517,8 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   const [activeSection, setActiveSection] = useState<SectionKey>("A");
   const [userRole] = useState<UserRole>(readOnly ? "supervisor" : "trainer");
   const formRef = useRef<HTMLDivElement | null>(null);
+  const distributedFormIdRef = useRef<string | null>(null);
+  const autosaveBootstrapped = useRef(false);
   const [distributedFormId, setDistributedFormId] = useState<string | null>(null);
 
   const [trainerName, setTrainerName] = useState(submittedData?.trainerName ?? currentUser?.name ?? "");
@@ -615,7 +621,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       },
       {
         key: "C",
-        label: "Section C · Trainee Feedback",
+        label: "Trainee feedback received",
         ok: integrityLinkedFeedbackCount > 0
       },
       {
@@ -691,25 +697,6 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     return null;
   }, [distributedFormId, reviewFormId]);
 
-  const traineeFeedbackLink = useMemo(() => {
-    if (!effectiveDistributedFormId) return "";
-    const origin =
-      typeof window !== "undefined" && window.location?.origin ? window.location.origin : "";
-    return `${origin}/trainee-feedback?formId=${effectiveDistributedFormId}`;
-  }, [effectiveDistributedFormId]);
-
-  const traineeQrUrl = useMemo(() => {
-    if (!effectiveDistributedFormId) return "";
-    const sessionId = Number(effectiveDistributedFormId.replace(/^F-/, ""));
-    if (Number.isFinite(sessionId) && sessionId > 0) {
-      return getTrainingSessionQrUrl(sessionId);
-    }
-    if (!traineeFeedbackLink) return "";
-    return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-      traineeFeedbackLink
-    )}`;
-  }, [effectiveDistributedFormId, traineeFeedbackLink]);
-
   const linkedForm = useMemo(
     () =>
       effectiveDistributedFormId
@@ -720,7 +707,9 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
 
   const isDraftForm = linkedForm?.status === "Draft";
   const isPublishedForFeedback =
-    linkedForm?.status === "Waiting for Feedback" || linkedForm?.status === "Feedback Closed";
+    linkedForm?.status != null && isInStatuses(linkedForm.status, TRAINER_CONTINUE_ASSESSMENT_STATUSES);
+  const isTraineeFeedbackComplete =
+    linkedForm?.status === "Feedback Closed" || linkedForm?.status === "Trainer Assessment Pending";
 
   const statementAveragesFromFeedback = useMemo(() => {
     const feedback = linkedForm?.supervisorOnlyFeedback ?? [];
@@ -759,10 +748,28 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   }, [currentUser?.supervisorId, users]);
 
   useEffect(() => {
+    distributedFormIdRef.current = distributedFormId;
+  }, [distributedFormId]);
+
+  useEffect(() => {
     if (!distributedFormId && effectiveDistributedFormId) {
       setDistributedFormId(effectiveDistributedFormId);
     }
   }, [distributedFormId, effectiveDistributedFormId]);
+
+  useEffect(() => {
+    if (!urlSection) return;
+    if (sections.includes(urlSection as SectionKey)) {
+      setActiveSection(urlSection as SectionKey);
+    }
+  }, [urlSection, sections]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      autosaveBootstrapped.current = true;
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (!numberOfTrainees) return;
@@ -1096,14 +1103,17 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     // Keep Skills & Follow-up trainee names aligned with the actual names
     // submitted by trainees in the feedback form.
     setTrainees((prev) => {
-      const targetLength = Math.max(prev.length, submittedFeedback.length);
-      const next = Array.from({ length: targetLength }, (_, index) => {
-        const existing = prev[index] ?? createEmptyTrainee();
-        const feedbackName = submittedFeedback[index]?.traineeName?.trim() ?? "";
-        if (!feedbackName) return existing;
-        return { ...existing, name: feedbackName };
+      const namesFromFeedback = submittedFeedback
+        .map((entry) => entry.traineeName?.trim() ?? "")
+        .filter((name) => name.length > 0);
+      if (!namesFromFeedback.length) return prev;
+
+      return namesFromFeedback.map((name) => {
+        const existing =
+          prev.find((row) => normalizeTraineeKey(row.name) === normalizeTraineeKey(name)) ??
+          createEmptyTrainee();
+        return { ...existing, name };
       });
-      return next;
     });
   }, [userRole, linkedForm, numberOfTrainees]);
 
@@ -1134,7 +1144,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   const visibleSections = sections.filter((section) => {
     if (section === "B") return false;
     const owner = sectionOwnership[section];
-    if (userRole === "trainer") return section === "C" || owner === "Trainer" || owner === "Trainer + Trainee";
+    if (userRole === "trainer") return owner === "Trainer" || owner === "Trainer + Trainee";
     if (userRole === "trainee") return owner === "Trainee" || owner === "Trainer + Trainee";
     return section === "C" || owner === "Trainer" || owner === "Trainer + Trainee";
   });
@@ -1303,8 +1313,11 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
 
     let cancelled = false;
 
-    getTrainingSession(sessionId)
-      .then((session) => {
+    Promise.all([
+      getTrainingSession(sessionId),
+      getSessionFeedbackEntries(sessionId).catch(() => [] as unknown[])
+    ])
+      .then(([session, feedbackRaw]) => {
         if (cancelled) return;
         const formId = `F-${session.id}`;
         setDistributedFormId(formId);
@@ -1334,29 +1347,50 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         }
 
         const statusRaw = session.status ?? (session as { Status?: string }).Status ?? "Draft";
-        const uiStatus =
-          statusRaw.toLowerCase() === "waiting for feedback"
-            ? "Waiting for Feedback"
-            : statusRaw.toLowerCase() === "draft"
-              ? "Draft"
-              : "Draft";
+        const uiStatus = toUiStatus(statusRaw);
+        const loadedFeedback = mapApiFeedbackEntries(feedbackRaw);
+        const existingForm = useAppStore.getState().forms.find((form) => form.id === formId);
+        const supervisorOnlyFeedback =
+          loadedFeedback.length > 0
+            ? loadedFeedback
+            : existingForm?.supervisorOnlyFeedback;
+        const feedbackResponses = Math.max(
+          existingForm?.feedbackResponses ?? 0,
+          loadedFeedback.length
+        );
+        const averageScore =
+          loadedFeedback.length > 0
+            ? Number(
+                (
+                  loadedFeedback.reduce((sum, entry) => sum + entry.averageScore, 0) /
+                  loadedFeedback.length
+                ).toFixed(1)
+              )
+            : (existingForm?.averageScore ?? 0);
 
         addForm({
+          ...(existingForm ?? {}),
           id: formId,
-          title: session.title || "Untitled draft",
+          title: session.title || existingForm?.title || "Untitled draft",
           trainerId: session.trainerId,
           backendSessionId: session.id,
-          assignedSupervisorId: currentUser?.supervisorId,
-          department: session.department || currentUser?.department || "",
-          date: session.trainingDate?.slice(0, 10) || session.createdAt.slice(0, 10),
-          trainees: session.numberOfTrainees ?? 0,
-          feedbackResponses: 0,
-          averageScore: 0,
-          status: uiStatus as TrainingForm["status"],
+          assignedSupervisorId:
+            session.assignedSupervisorId ?? existingForm?.assignedSupervisorId ?? currentUser?.supervisorId,
+          department: session.department || existingForm?.department || currentUser?.department || "",
+          date: session.trainingDate?.slice(0, 10) || existingForm?.date || session.createdAt.slice(0, 10),
+          trainees: session.numberOfTrainees ?? existingForm?.trainees ?? 0,
+          feedbackResponses,
+          averageScore,
+          status: uiStatus,
           recommendation:
-            uiStatus === "Draft" ? "Draft — not yet published" : "Open for trainee feedback",
-          createdAt: session.createdAt.slice(0, 10),
-          feedbackClosesAt: session.feedbackClosesAt ?? undefined
+            uiStatus === "Draft"
+              ? "Draft — not yet published"
+              : uiStatus === "Trainer Assessment Pending" || uiStatus === "Feedback Closed"
+                ? "Trainee feedback complete — continue trainer assessment"
+                : "Open for trainee feedback",
+          createdAt: existingForm?.createdAt ?? session.createdAt.slice(0, 10),
+          feedbackClosesAt: session.feedbackClosesAt ?? existingForm?.feedbackClosesAt,
+          supervisorOnlyFeedback
         });
 
         setLoadedRemoteDraft(true);
@@ -1381,13 +1415,61 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
     userRole
   ]);
 
+  const autosaveSnapshot = useMemo(
+    () => JSON.stringify(buildTrainerDraft()),
+    [
+      activeSection,
+      distributedFormId,
+      trainerName,
+      trainerDepartment,
+      trainingTitle,
+      trainingDate,
+      trainingDurationDays,
+      trainingDurationHours,
+      numberOfTrainees,
+      feedbackOpenHours,
+      objectives,
+      observedImprovement,
+      trainingFormats,
+      targetUserGroup,
+      followUpSupervisorName,
+      applicationExtent,
+      observedImprovementDetails,
+      supportNeeded,
+      barriersComment,
+      workedWellComment,
+      effectivenessRating,
+      recommendationChoice,
+      trainerFutureSessionComment,
+      supervisorFutureSessionComment,
+      signatures,
+      signOff,
+      ratings,
+      traineeRoster,
+      trainees
+    ]
+  );
+
+  const lockedForSupervisorSubmit = useMemo(
+    () =>
+      linkedForm?.status === "Submitted" ||
+      linkedForm?.status === "Under Review" ||
+      linkedForm?.status === "Approved" ||
+      linkedForm?.status === "Completed",
+    [linkedForm?.status]
+  );
+
   const saveDraftToServer = async (silent: boolean): Promise<boolean> => {
     if (readOnly || userRole !== "trainer" || !currentUser?.id) return false;
     if (!hasAnyFormInput()) return false;
-    if (isPublishedForFeedback && !isDraftForm) return false;
+    if (lockedForSupervisorSubmit) return false;
 
-    const existingSessionId = distributedFormId ? Number(distributedFormId.replace(/^F-/, "")) : NaN;
+    const formIdRef = distributedFormIdRef.current ?? distributedFormId;
+    const existingSessionId = formIdRef ? Number(formIdRef.replace(/^F-/, "")) : NaN;
     setIsSavingDraft(true);
+
+    const nextStatus: TrainingForm["status"] =
+      linkedForm?.status && linkedForm.status !== "Draft" ? linkedForm.status : "Draft";
 
     try {
       const result = await saveTrainingSessionDraft({
@@ -1402,11 +1484,12 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         TrainingFormat: trainingFormats,
         TargetAudience: targetUserGroup,
         Objectives: objectives.filter((item) => item.trim().length > 0),
-        DraftPayload: JSON.stringify(buildTrainerDraft())
+        DraftPayload: autosaveSnapshot
       });
 
       const formId = `F-${result.sessionId}`;
       setDistributedFormId(formId);
+      distributedFormIdRef.current = formId;
       setLastAutoSavedAt(new Date().toLocaleTimeString());
 
       addForm({
@@ -1418,11 +1501,15 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
         department: trainerDepartment || currentUser.department || "",
         date: trainingDate || new Date().toISOString().slice(0, 10),
         trainees: Number(numberOfTrainees) || traineeRoster.length || 0,
-        feedbackResponses: 0,
-        averageScore: 0,
-        status: "Draft",
-        recommendation: "Draft — not yet published",
-        createdAt: new Date().toISOString().slice(0, 10),
+        feedbackResponses: linkedForm?.feedbackResponses ?? 0,
+        averageScore: linkedForm?.averageScore ?? 0,
+        status: nextStatus,
+        recommendation:
+          nextStatus === "Draft"
+            ? "Draft — not yet published"
+            : linkedForm?.recommendation ?? "Open for trainee feedback",
+        createdAt: linkedForm?.createdAt ?? new Date().toISOString().slice(0, 10),
+        feedbackClosesAt: linkedForm?.feedbackClosesAt,
         submittedData: buildSubmittedDataSnapshot()
       });
 
@@ -1475,16 +1562,16 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
   };
 
   useEffect(() => {
-    if (readOnly || userRole !== "trainer") return;
-    if (isPublishedForFeedback && !isDraftForm) return;
+    if (readOnly || userRole !== "trainer" || lockedForSupervisorSubmit) return;
+    if (!autosaveBootstrapped.current) return;
 
-    const timer = window.setInterval(() => {
+    const timer = window.setTimeout(() => {
       if (isSavingDraft) return;
       void saveDraftToServer(true);
-    }, 30000);
+    }, 2000);
 
-    return () => window.clearInterval(timer);
-  }, [readOnly, userRole, isDraftForm, isPublishedForFeedback, isSavingDraft, currentUser?.id]);
+    return () => window.clearTimeout(timer);
+  }, [autosaveSnapshot, readOnly, userRole, lockedForSupervisorSubmit, isSavingDraft, currentUser?.id]);
 
   const handleDistributeTraineeQr = async () => {
     if (readOnly || userRole !== "trainer") return;
@@ -1596,12 +1683,22 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
       }
     });
 
-    setSubmitModal({
-      open: true,
-      kind: "success",
-      title: "Published — Open For Feedback",
-      message: `Trainees can submit feedback at /trainee-feedback?formId=${formId}. Feedback closes ${new Date(feedbackClosesAt).toLocaleString()}.`
+    await saveTrainingSessionDraft({
+      SessionId: sessionId,
+      TrainerId: currentUser.id,
+      Title: trainingTitle || "Training Assessment",
+      Department: trainerDepartment,
+      TrainingDate: trainingDate || undefined,
+      DurationDays: Number(trainingDurationDays) || undefined,
+      DurationHours: Number(trainingDurationHours) || undefined,
+      NumberOfTrainees: Number(numberOfTrainees) || undefined,
+      TrainingFormat: trainingFormats,
+      TargetAudience: targetUserGroup,
+      Objectives: objectives.filter((item) => item.trim().length > 0),
+      DraftPayload: JSON.stringify(buildTrainerDraft())
     });
+
+    navigate(`/trainer/create?formId=${encodeURIComponent(formId)}&section=D`);
   };
 
   const handleSubmit = async () => {
@@ -1973,6 +2070,10 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                   <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700">
                     Draft — not published
                   </span>
+                ) : isTraineeFeedbackComplete ? (
+                  <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-900">
+                    Trainer Assessment Pending
+                  </span>
                 ) : isPublishedForFeedback ? (
                   <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-800">
                     Published — feedback open
@@ -2011,7 +2112,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
 
             {!isSupervisorReviewMode && lastAutoSavedAt ? (
               <p className="mt-3 text-center text-xs text-slate-500">
-                {isSavingDraft ? "Auto-saving draft…" : `Last saved ${lastAutoSavedAt}`}
+                {isSavingDraft ? "Saving…" : `Auto-saved ${lastAutoSavedAt}`}
               </p>
             ) : null}
             {!isSupervisorReviewMode && showDraftToast ? (
@@ -2048,7 +2149,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 Submission Integrity Check: {submissionIntegrity.complete ? "Complete" : "Incomplete"}
               </p>
               {submissionIntegrity.complete ? (
-                <p className="mt-1 text-xs">All required sections (A/C/D/F/G) have captured data.</p>
+                <p className="mt-1 text-xs">All required sections (A, trainee feedback, D, F, G) have captured data.</p>
               ) : (
                 <div className="mt-1">
                   <p className="text-xs">Missing or empty sections:</p>
@@ -2060,6 +2161,13 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                 </div>
               )}
             </div>
+          </div>
+        ) : null}
+
+        {userRole === "trainer" && isTraineeFeedbackComplete && !isSupervisorReviewMode ? (
+          <div className="mb-5 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 shadow-panel">
+            Trainee feedback is complete. Continue the trainer assessment (sections D, F, and G), then submit to your
+            supervisor.
           </div>
         ) : null}
 
@@ -2133,59 +2241,44 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
 
               {!isSupervisorReviewMode ? (
                 <div className="md:col-span-2 rounded-xl border border-brand-line bg-slate-50 p-4">
-                  <p className="text-sm font-semibold text-brand-ink">Trainee Link / QR Distribution</p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    Submit the assessment to open trainee feedback and generate the QR code/link.
-                  </p>
-                  <div className="mt-3 grid gap-3 md:max-w-xs">
-                    <TextInput
-                      label="Open for feedback (hours)"
-                      type="number"
-                      min={1}
-                      placeholder="e.g. 24"
-                      value={feedbackOpenHours}
-                      onChange={setFeedbackOpenHours}
-                    />
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={handleDistributeTraineeQr}
-                      disabled={!isSectionABComplete}
-                      className="rounded-lg border border-slate-700 bg-slate-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300"
-                    >
-                      Submit
-                    </button>
-                    <span className="text-xs font-medium text-slate-500">
-                      {isSectionABComplete ? "A+B complete" : "Complete required A+B fields to enable"}
-                    </span>
-                  </div>
-
-                  {distributedFormId && traineeFeedbackLink ? (
-                    <div className="mt-4 grid gap-3 md:grid-cols-[220px,1fr] md:items-start">
-                      <img
-                        src={traineeQrUrl}
-                        alt="Trainee feedback QR code"
-                        className="h-[220px] w-[220px] rounded-lg border border-brand-line bg-white p-2"
-                      />
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Trainee Link</p>
-                        <p className="break-all rounded-lg border border-brand-line bg-white p-2 text-xs text-slate-700">
-                          {traineeFeedbackLink}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!traineeFeedbackLink) return;
-                            navigator.clipboard?.writeText(traineeFeedbackLink);
-                          }}
-                          className="rounded-lg border border-brand-line bg-white px-3 py-2 text-xs font-semibold text-brand-ink transition hover:border-brand-ruby hover:text-brand-ruby"
-                        >
-                          Copy Link
-                        </button>
+                  {isPublishedForFeedback && effectiveDistributedFormId ? (
+                    <>
+                      <p className="text-sm font-semibold text-brand-ink">Trainee feedback is open</p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Get the QR code and link from <strong>My Assessments</strong>, then continue from Section D
+                        below.
+                      </p>
+                      <Link
+                        to="/trainer/submissions"
+                        className="mt-3 inline-flex rounded-lg border border-brand-ruby bg-white px-4 py-2 text-sm font-semibold text-brand-ruby transition hover:bg-red-50"
+                      >
+                        My Assessments — QR &amp; link
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-semibold text-brand-ink">Before publishing</p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Set how long trainees can submit feedback. After publishing you will continue at Section D; share
+                        the QR from My Assessments.
+                      </p>
+                      <div className="mt-3 grid gap-3 md:max-w-xs">
+                        <TextInput
+                          label="Open for feedback (hours)"
+                          type="number"
+                          min={1}
+                          placeholder="e.g. 24"
+                          value={feedbackOpenHours}
+                          onChange={setFeedbackOpenHours}
+                        />
                       </div>
-                    </div>
-                  ) : null}
+                      <p className="mt-2 text-xs font-medium text-slate-500">
+                        {isSectionABComplete
+                          ? "Use Publish & open feedback (bottom of Section A) when ready."
+                          : "Complete required Section A + objectives before publishing."}
+                      </p>
+                    </>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -2474,24 +2567,17 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
 
           {activeSection === "D" && visibleSections.includes("D") ? (
           <Card section="D" title="Knowledge / Skills Check + Workplace Follow-up" owner="Trainer" disabled={isSupervisorReviewMode}>
-            <p className="mb-3 text-sm text-slate-600">Complete after training, based on observation, Q&A, or practical test.</p>
-
-            <div className="mb-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setTrainees((prev) => [...prev, createEmptyTrainee()])}
-                className="rounded-lg border border-brand-line bg-white px-3 py-2 text-sm font-medium text-brand-ink transition hover:border-brand-ruby hover:text-brand-ruby"
-              >
-                + Add Trainee
-              </button>
-            </div>
+            <p className="mb-3 text-sm text-slate-600">
+              Complete after training, based on observation, Q&A, or practical test. Trainee names are filled in from
+              Section C feedback.
+            </p>
 
             {/* Desktop table view */}
             <div className="hidden overflow-x-auto md:block">
               <table className="min-w-full border-collapse rounded-lg border border-brand-line text-sm">
                 <thead className="bg-slate-100 text-slate-700">
                   <tr>
-                    <th className={`${tableCell} sticky top-0 z-10 bg-slate-100 text-left`}>Trainee Name (optional)</th>
+                    <th className={`${tableCell} sticky top-0 z-10 bg-slate-100 text-left`}>Trainee Name</th>
                     <th className={`${tableCell} sticky top-0 z-10 bg-slate-100 text-center`}>Demonstrated understanding</th>
                     <th className={`${tableCell} sticky top-0 z-10 bg-slate-100 text-center`}>Able to perform task without support</th>
                     <th className={`${tableCell} sticky top-0 z-10 bg-slate-100 text-center`}>Status</th>
@@ -2502,6 +2588,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                   {trainees.map((trainee, index) => {
                     const isEvaluated = trainee.understanding !== "" && trainee.independent !== "";
                     const isPass = trainee.understanding === "Yes" && trainee.independent === "Yes";
+                    const nameFromFeedback = submittedTraineeNameSet.has(normalizeTraineeKey(trainee.name));
 
                     return (
                       <tr key={`trainee-${index}`} className="odd:bg-white even:bg-slate-50">
@@ -2509,6 +2596,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                           <input
                             type="text"
                             value={trainee.name}
+                            readOnly={nameFromFeedback}
                             placeholder={`Trainee ${index + 1}`}
                             onChange={(event) => {
                               const value = event.target.value;
@@ -2518,7 +2606,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                                 return next;
                               });
                             }}
-                            className="w-full rounded-lg border border-brand-line px-2 py-1.5 text-sm"
+                            className={`w-full rounded-lg border border-brand-line px-2 py-1.5 text-sm ${nameFromFeedback ? "bg-slate-100 text-slate-700" : ""}`}
                           />
                         </td>
                         <td className={`${tableCell} text-center`}>
@@ -2561,16 +2649,19 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                           </span>
                         </td>
                         <td className={`${tableCell} text-center`}>
-                          <button
-                            type="button"
-                            disabled={trainees.length === 1}
-                            onClick={() =>
-                              setTrainees((prev) => prev.filter((_, traineeIndex) => traineeIndex !== index))
-                            }
-                            className="text-xs font-medium text-slate-500 transition hover:text-brand-ruby disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            Remove
-                          </button>
+                          {!nameFromFeedback && trainees.length > 1 ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setTrainees((prev) => prev.filter((_, traineeIndex) => traineeIndex !== index))
+                              }
+                              className="text-xs font-medium text-slate-500 transition hover:text-brand-ruby"
+                            >
+                              Remove
+                            </button>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -2584,11 +2675,14 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
               {trainees.map((trainee, index) => {
                 const isEvaluated = trainee.understanding !== "" && trainee.independent !== "";
                 const isPass = trainee.understanding === "Yes" && trainee.independent === "Yes";
+                const nameFromFeedback = submittedTraineeNameSet.has(normalizeTraineeKey(trainee.name));
 
                 return (
                   <div key={`trainee-mobile-${index}`} className="rounded-lg border border-brand-line bg-white p-3">
                     <div className="mb-2 flex items-center justify-between">
-                      <p className="text-sm font-semibold text-brand-ink">Trainee {index + 1}</p>
+                      <p className="text-sm font-semibold text-brand-ink">
+                        {trainee.name.trim() || `Trainee ${index + 1}`}
+                      </p>
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
                           !isEvaluated
@@ -2605,6 +2699,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                       <input
                         type="text"
                         value={trainee.name}
+                        readOnly={nameFromFeedback}
                         placeholder={`Trainee ${index + 1}`}
                         onChange={(event) => {
                           const value = event.target.value;
@@ -2614,7 +2709,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                             return next;
                           });
                         }}
-                        className="w-full rounded-lg border border-brand-line px-2 py-1.5 text-sm"
+                        className={`w-full rounded-lg border border-brand-line px-2 py-1.5 text-sm ${nameFromFeedback ? "bg-slate-100 text-slate-700" : ""}`}
                       />
                       <div>
                         <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Understanding</p>
@@ -2644,7 +2739,7 @@ export function ExactAssessmentFormPage({ readOnly = false, submittedData, revie
                           }}
                         />
                       </div>
-                      {trainees.length > 1 ? (
+                      {!nameFromFeedback && trainees.length > 1 ? (
                         <button
                           type="button"
                           onClick={() =>

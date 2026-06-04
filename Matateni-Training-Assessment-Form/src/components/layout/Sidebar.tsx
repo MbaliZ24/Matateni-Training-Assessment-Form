@@ -20,7 +20,7 @@ const navByRole: Record<Role, { to: string; label: string; icon: React.Component
     { to: "/trainer/create", label: "Assessments", icon: ClipboardList },
     { to: "/trainer/drafts", label: "My Drafts", icon: FileText },
     { to: "/trainer/feedback", label: "Feedback", icon: MessageSquare },
-    { to: "/trainer/submissions", label: "My Submissions", icon: ListChecks }
+    { to: "/trainer/submissions", label: "My Assessments", icon: ListChecks }
   ],
   supervisor: [
     { to: "/supervisor", label: "Dashboard", icon: ShieldCheck },

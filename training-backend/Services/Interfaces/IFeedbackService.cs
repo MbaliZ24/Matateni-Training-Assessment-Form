@@ -6,5 +6,7 @@ public interface IFeedbackService
 { 
     Task<int> SubmitFeedbackAsync(CreateFeedbackSubmissionDto dto); 
     Task<FeedbackSummaryDto> GetSessionSummaryAsync(int sessionId);
+
+    Task<List<TraineeFeedbackEntryDto>> GetSessionEntriesAsync(int sessionId);
     
 }
