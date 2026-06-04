@@ -9,7 +9,17 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("MatateniFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:5173")
+        policy.SetIsOriginAllowed(origin =>
+              {
+                  if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                  {
+                      return false;
+                  }
+
+                  return uri.Scheme is "http" or "https"
+                         && (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                             || uri.Host.Equals("127.0.0.1"));
+              })
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
